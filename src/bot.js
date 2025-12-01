@@ -77,17 +77,9 @@ function analyzePage(url) {
         reject(new Error(`Python process exited with code ${code}: ${stderr}`));
         return;
       }
-      
-      try {
-        const result = JSON.parse(stdout);
-        if (result.success) {
-          resolve(result.data);
-        } else {
-          reject(new Error(result.error));
-        }
-      } catch (e) {
-        reject(new Error(`Failed to parse Python output: ${e.message}`));
-      }
+
+      // Return raw JSON string; we'll parse it in the caller
+      resolve(stdout);
     });
     
     setTimeout(() => {
@@ -113,18 +105,34 @@ bot.on('message', async (msg) => {
     return;
   }
 
-  const url = msg.text || '';
+  let url = msg.text || '';
   
   if (!url.trim()) {
     bot.sendMessage(chatId, 'Please send the page URL.');
     return;
   }
 
+  // Add https:// if protocol is missing
+  if (!url.match(/^https?:\/\//i)) {
+    url = 'https://' + url;
+  }
+
   bot.sendMessage(chatId, '🌐 Opening page in browser...');
 
   try {
     // Step 1: Open page with Playwright
-    const pageAnalysis = await analyzePage(url);
+    const pageAnalysisRaw = await analyzePage(url);
+    
+    // Parse the JSON response from Python
+    let pageAnalysis = pageAnalysisRaw;
+    let rawData = {};
+    try {
+      const parsed = JSON.parse(pageAnalysisRaw);
+      pageAnalysis = parsed.data || pageAnalysisRaw;
+      rawData = parsed.raw || {};
+    } catch (e) {
+      console.log('Using raw page analysis');
+    }
     
     bot.sendMessage(chatId, '🤖 Generating checklist based on analysis...');
     
@@ -143,20 +151,71 @@ bot.on('message', async (msg) => {
     });
 
     const checklist = response.choices[0].message.content;
+    const timestamp = Date.now();
     
-    // Save CSV to file and send as document
-    const csvFilename = `checklist_${Date.now()}.csv`;
+    // 1. Save CSV checklist
+    const csvFilename = `checklist_${timestamp}.csv`;
     const csvPath = path.join(__dirname, '../', csvFilename);
-    
     fs.writeFileSync(csvPath, checklist, 'utf8');
     
-    // Send CSV file to user
+    // 2. Save full HTML copy
+    const htmlFilename = `page_copy_${timestamp}.html`;
+    const htmlPath = path.join(__dirname, '../', htmlFilename);
+    if (rawData.html) {
+      fs.writeFileSync(htmlPath, rawData.html, 'utf8');
+    }
+    
+    // 3. Save comprehensive JSON analysis
+    const analysisFilename = `analysis_${timestamp}.json`;
+    const analysisPath = path.join(__dirname, '../', analysisFilename);
+    const fullAnalysis = {
+      url: url,
+      timestamp: new Date().toISOString(),
+      title: rawData.title,
+      meta: rawData.meta,
+      stylesheets: rawData.stylesheets,
+      scripts: rawData.scripts,
+      headings: rawData.headings,
+      links: rawData.links,
+      buttons: rawData.buttons,
+      images: rawData.images,
+      forms: rawData.forms,
+      inputs: rawData.inputs,
+      interactive_elements: rawData.interactive_elements,
+      text_content: rawData.text_content,
+      screenshot: rawData.screenshot
+    };
+    fs.writeFileSync(analysisPath, JSON.stringify(fullAnalysis, null, 2), 'utf8');
+    
+    // Send all files to user
+    await bot.sendMessage(chatId, '📦 Sending files...');
+    
     await bot.sendDocument(chatId, csvPath, {
-      caption: `✅ Checklist ready for ${url}`
+      caption: `✅ CSV Checklist for ${url}`
     });
     
-    // Delete file after sending
+    if (rawData.html) {
+      await bot.sendDocument(chatId, htmlPath, {
+        caption: `📄 HTML copy of the page`
+      });
+    }
+    
+    await bot.sendDocument(chatId, analysisPath, {
+      caption: `📊 Full analysis (JSON): HTML, CSS, JS, Meta, Forms, etc.`
+    });
+    
+    // Send screenshot if exists (as document to avoid Telegram photo dimension limits)
+    if (rawData.screenshot && fs.existsSync(rawData.screenshot)) {
+      await bot.sendDocument(chatId, rawData.screenshot, {
+        caption: `📸 Full page screenshot`
+      });
+      fs.unlinkSync(rawData.screenshot);
+    }
+    
+    // Delete temporary files
     fs.unlinkSync(csvPath);
+    if (rawData.html) fs.unlinkSync(htmlPath);
+    fs.unlinkSync(analysisPath);
   } catch (error) {
     console.error('Error:', error);
     bot.sendMessage(chatId, `❌ Error: ${error.message}`);

@@ -10,3 +10,9 @@ browser-service/*.pyc
 *.py[cod]
 *$py.class
 
+# Generated analysis artifacts
+analysis_*.json
+checklist_*.csv
+page_copy_*.html
+screenshot_*.png
+
