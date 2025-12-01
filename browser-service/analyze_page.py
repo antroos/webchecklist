@@ -10,134 +10,183 @@ load_dotenv()
 async def analyze_page(url):
     """Open URL with Playwright and collect comprehensive page information"""
     try:
+        print("🐍 Browser: Starting analyze_page function", file=sys.stderr, flush=True)
+        print(f"🐍 Browser: Target URL: {url}", file=sys.stderr, flush=True)
+        print("🐍 Browser: Initializing Playwright...", file=sys.stderr, flush=True)
+        
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False)
-            page = await browser.new_page()
+            print("🐍 Browser: Playwright initialized ✓", file=sys.stderr, flush=True)
+            print("🐍 Browser: Launching Chromium (headless)...", file=sys.stderr, flush=True)
             
-            # Load page with longer timeout
-            await page.goto(url, wait_until='domcontentloaded', timeout=60000)
-            await page.wait_for_timeout(3000)  # Wait for content to render
+            # In cloud environments there is no X server, so we must run headless
+            # and disable sandboxing flags that are not available in containers.
+            browser = await p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-setuid-sandbox"],
+            )
+            print("🐍 Browser: Chromium launched ✓", file=sys.stderr, flush=True)
+            
+            page = await browser.new_page()
+            print("🐍 Browser: New page created ✓", file=sys.stderr, flush=True)
+            
+            print(f"🐍 Browser: Navigating to {url}...", file=sys.stderr, flush=True)
+            print(f"🐍 Browser: Timeout set to 30s, waiting for domcontentloaded", file=sys.stderr, flush=True)
+            
+            # Set a very short page load timeout and don't wait for all resources
+            # This is acceptable since we only need HTML structure for checklist generation
+            await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            
+            print("🐍 Browser: Page loaded (domcontentloaded) ✓", file=sys.stderr, flush=True)
+            print("🐍 Browser: Waiting 1s for JS initialization...", file=sys.stderr, flush=True)
+            await page.wait_for_timeout(1000)  # Minimal wait for JS to init
+            print("🐍 Browser: JS wait complete ✓", file=sys.stderr, flush=True)
             
             # Extract comprehensive page information
+            print("🐍 Browser: Starting data extraction...", file=sys.stderr, flush=True)
+            
+            print("🐍 Browser: Extracting title...", file=sys.stderr, flush=True)
+            title = await page.title()
+            print(f"🐍 Browser: Title extracted: '{title[:50]}'", file=sys.stderr, flush=True)
+            
+            print("🐍 Browser: Extracting HTML content...", file=sys.stderr, flush=True)
+            html = await page.content()
+            print(f"🐍 Browser: HTML extracted ({len(html)} chars)", file=sys.stderr, flush=True)
+            
             content = {
                 "url": url,
-                "title": await page.title(),
-                
-                # Full HTML structure
-                "html": await page.content(),
-                
-                # All CSS stylesheets
-                "stylesheets": await page.evaluate("""() => {
-                    return Array.from(document.styleSheets).map(sheet => {
-                        try {
-                            return {
-                                href: sheet.href || 'inline',
-                                rules: Array.from(sheet.cssRules || []).map(rule => rule.cssText).join('\\n')
-                            };
-                        } catch (e) {
-                            return { href: sheet.href || 'inline', rules: 'CORS blocked or no access' };
-                        }
-                    });
-                }"""),
-                
-                # Interactive elements with event handlers
-                "interactive_elements": await page.evaluate("""() => {
-                    const elements = [];
-                    document.querySelectorAll('[onclick], [onmouseover], [onsubmit], [onchange]').forEach(el => {
-                        elements.push({
-                            tag: el.tagName,
-                            onclick: el.getAttribute('onclick'),
-                            onmouseover: el.getAttribute('onmouseover'),
-                            text: el.innerText?.substring(0, 50)
-                        });
-                    });
-                    return elements;
-                }"""),
-                
-                # All scripts
-                "scripts": await page.evaluate("""() => {
-                    return Array.from(document.scripts).map(script => ({
-                        src: script.src || 'inline',
-                        type: script.type,
-                        inline: script.src ? null : script.innerHTML.substring(0, 300)
-                    }));
-                }"""),
-                
-                # Meta tags
-                "meta": await page.evaluate("""() => {
-                    return Array.from(document.querySelectorAll('meta')).map(meta => ({
-                        name: meta.name,
-                        property: meta.property,
-                        content: meta.content
-                    }));
-                }"""),
-                
-                # Text content
-                "text_content": await page.evaluate("() => document.body.innerText"),
-                
-                # Links
-                "links": await page.evaluate("""() => {
-                    return Array.from(document.querySelectorAll('a')).map(a => ({
-                        text: a.innerText.trim(),
-                        href: a.href,
-                        target: a.target
-                    })).filter(link => link.text);
-                }"""),
-                
-                # Buttons
-                "buttons": await page.evaluate("""() => {
-                    return Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"], [role="button"]')).map(btn => ({
-                        text: btn.innerText.trim() || btn.value || btn.getAttribute('aria-label') || 'Button',
-                        type: btn.type,
-                        onclick: btn.getAttribute('onclick')
-                    })).filter(btn => btn.text);
-                }"""),
-                
-                # Images
-                "images": await page.evaluate("""() => {
-                    return Array.from(document.querySelectorAll('img')).map(img => ({
-                        alt: img.alt,
-                        src: img.src,
-                        width: img.width,
-                        height: img.height
-                    }));
-                }"""),
-                
-                # Headings
-                "headings": await page.evaluate("""() => {
-                    return Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(h => ({
-                        level: h.tagName,
-                        text: h.innerText.trim(),
-                        id: h.id
-                    })).filter(h => h.text);
-                }"""),
-                
-                # Forms
-                "forms": await page.evaluate("""() => {
-                    return Array.from(document.querySelectorAll('form')).map(form => ({
-                        action: form.action,
-                        method: form.method,
-                        id: form.id
-                    }));
-                }"""),
-                
-                # Input fields
-                "inputs": await page.evaluate("""() => {
-                    return Array.from(document.querySelectorAll('input, textarea, select')).map(input => ({
-                        type: input.type || input.tagName.toLowerCase(),
-                        placeholder: input.placeholder || '',
-                        label: input.getAttribute('aria-label') || input.name || '',
-                        required: input.required
-                    }));
-                }""")
+                "title": title,
+                "html": html,
             }
+            
+            print("🐍 Browser: Extracting stylesheets...", file=sys.stderr, flush=True)
+            content["stylesheets"] = await page.evaluate("""() => {
+                return Array.from(document.styleSheets).map(sheet => {
+                    try {
+                        return {
+                            href: sheet.href || 'inline',
+                            rules: Array.from(sheet.cssRules || []).map(rule => rule.cssText).join('\\n')
+                        };
+                    } catch (e) {
+                        return { href: sheet.href || 'inline', rules: 'CORS blocked or no access' };
+                    }
+                });
+            }""")
+            print(f"🐍 Browser: Stylesheets extracted ({len(content['stylesheets'])} sheets)", file=sys.stderr, flush=True)
+            
+            print("🐍 Browser: Extracting interactive elements...", file=sys.stderr, flush=True)
+            content["interactive_elements"] = await page.evaluate("""() => {
+                const elements = [];
+                document.querySelectorAll('[onclick], [onmouseover], [onsubmit], [onchange]').forEach(el => {
+                    elements.push({
+                        tag: el.tagName,
+                        onclick: el.getAttribute('onclick'),
+                        onmouseover: el.getAttribute('onmouseover'),
+                        text: el.innerText?.substring(0, 50)
+                    });
+                });
+                return elements;
+            }""")
+            print(f"🐍 Browser: Interactive elements extracted ({len(content['interactive_elements'])} elements)", file=sys.stderr, flush=True)
+            
+            print("🐍 Browser: Extracting scripts...", file=sys.stderr, flush=True)
+            content["scripts"] = await page.evaluate("""() => {
+                return Array.from(document.scripts).map(script => ({
+                    src: script.src || 'inline',
+                    type: script.type,
+                    inline: script.src ? null : script.innerHTML.substring(0, 300)
+                }));
+            }""")
+            print(f"🐍 Browser: Scripts extracted ({len(content['scripts'])} scripts)", file=sys.stderr, flush=True)
+            
+            print("🐍 Browser: Extracting meta tags...", file=sys.stderr, flush=True)
+            content["meta"] = await page.evaluate("""() => {
+                return Array.from(document.querySelectorAll('meta')).map(meta => ({
+                    name: meta.name,
+                    property: meta.property,
+                    content: meta.content
+                }));
+            }""")
+            print(f"🐍 Browser: Meta tags extracted ({len(content['meta'])} tags)", file=sys.stderr, flush=True)
+            
+            print("🐍 Browser: Extracting text content...", file=sys.stderr, flush=True)
+            content["text_content"] = await page.evaluate("() => document.body.innerText")
+            print(f"🐍 Browser: Text content extracted ({len(content['text_content'])} chars)", file=sys.stderr, flush=True)
+            
+            print("🐍 Browser: Extracting links...", file=sys.stderr, flush=True)
+            content["links"] = await page.evaluate("""() => {
+                return Array.from(document.querySelectorAll('a')).map(a => ({
+                    text: a.innerText.trim(),
+                    href: a.href,
+                    target: a.target
+                })).filter(link => link.text);
+            }""")
+            print(f"🐍 Browser: Links extracted ({len(content['links'])} links)", file=sys.stderr, flush=True)
+            
+            print("🐍 Browser: Extracting buttons...", file=sys.stderr, flush=True)
+            content["buttons"] = await page.evaluate("""() => {
+                return Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"], [role="button"]')).map(btn => ({
+                    text: btn.innerText.trim() || btn.value || btn.getAttribute('aria-label') || 'Button',
+                    type: btn.type,
+                    onclick: btn.getAttribute('onclick')
+                })).filter(btn => btn.text);
+            }""")
+            print(f"🐍 Browser: Buttons extracted ({len(content['buttons'])} buttons)", file=sys.stderr, flush=True)
+            
+            print("🐍 Browser: Extracting images...", file=sys.stderr, flush=True)
+            content["images"] = await page.evaluate("""() => {
+                return Array.from(document.querySelectorAll('img')).map(img => ({
+                    alt: img.alt,
+                    src: img.src,
+                    width: img.width,
+                    height: img.height
+                }));
+            }""")
+            print(f"🐍 Browser: Images extracted ({len(content['images'])} images)", file=sys.stderr, flush=True)
+            
+            print("🐍 Browser: Extracting headings...", file=sys.stderr, flush=True)
+            content["headings"] = await page.evaluate("""() => {
+                return Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(h => ({
+                    level: h.tagName,
+                    text: h.innerText.trim(),
+                    id: h.id
+                })).filter(h => h.text);
+            }""")
+            print(f"🐍 Browser: Headings extracted ({len(content['headings'])} headings)", file=sys.stderr, flush=True)
+            
+            print("🐍 Browser: Extracting forms...", file=sys.stderr, flush=True)
+            content["forms"] = await page.evaluate("""() => {
+                return Array.from(document.querySelectorAll('form')).map(form => ({
+                    action: form.action,
+                    method: form.method,
+                    id: form.id
+                }));
+            }""")
+            print(f"🐍 Browser: Forms extracted ({len(content['forms'])} forms)", file=sys.stderr, flush=True)
+            
+            print("🐍 Browser: Extracting input fields...", file=sys.stderr, flush=True)
+            content["inputs"] = await page.evaluate("""() => {
+                return Array.from(document.querySelectorAll('input, textarea, select')).map(input => ({
+                    type: input.type || input.tagName.toLowerCase(),
+                    placeholder: input.placeholder || '',
+                    label: input.getAttribute('aria-label') || input.name || '',
+                    required: input.required
+                }));
+            }""")
+            print(f"🐍 Browser: Input fields extracted ({len(content['inputs'])} inputs)", file=sys.stderr, flush=True)
+            
+            print("🐍 Browser: Extracting page structure complete ✓", file=sys.stderr, flush=True)
+            print("🐍 Browser: Taking full-page screenshot...", file=sys.stderr, flush=True)
             
             # Take full page screenshot
             screenshot_filename = f"screenshot_{int(time.time())}.png"
             await page.screenshot(path=screenshot_filename, full_page=True)
             content["screenshot"] = screenshot_filename
             
+            print("🐍 Browser: Screenshot saved ✓", file=sys.stderr, flush=True)
+            print("🐍 Browser: Closing browser...", file=sys.stderr, flush=True)
             await browser.close()
+            print("🐍 Browser: Browser closed ✓", file=sys.stderr, flush=True)
+            print("🐍 Browser: Formatting results...", file=sys.stderr, flush=True)
             
             # Format comprehensive analysis
             analysis = f"""
@@ -204,8 +253,10 @@ Screenshot saved: {content['screenshot']}
                 "screenshot": content["screenshot"]
             }
             
+            print("🐍 Browser: Returning results to Node.js ✓", file=sys.stderr, flush=True)
             return {"success": True, "data": analysis, "raw": serializable_content}
     except Exception as e:
+        print(f"🐍 Browser: ERROR - {str(e)}", file=sys.stderr, flush=True)
         return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":

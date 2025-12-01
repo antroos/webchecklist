@@ -132,10 +132,13 @@ export async function POST(req: NextRequest) {
       csv,
       raw: rawData,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("API /api/analyze error:", error);
     return NextResponse.json(
-      { error: error?.message ?? "Unexpected error" },
+      {
+        error:
+          error instanceof Error ? error.message : "Unexpected error",
+      },
       { status: 500 },
     );
   }

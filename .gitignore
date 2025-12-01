@@ -16,3 +16,8 @@ checklist_*.csv
 page_copy_*.html
 screenshot_*.png
 
+# Next.js
+web/.next/
+web/.env.local
+web/node_modules/
+web/out/

@@ -37,7 +37,22 @@ DO NOT include backend functionality.
 
 Return ONLY CSV data, starting with the header. Generate 40-80 check items depending on page complexity.`;
 
-function analyzePage(url: string): Promise<any> {
+type PageRawData = {
+  html?: string;
+  title?: string;
+  url?: string;
+  screenshot?: string;
+  [key: string]: unknown;
+};
+
+type PythonResult = {
+  success: boolean;
+  data?: string;
+  raw?: PageRawData;
+  error?: string;
+};
+
+function analyzePage(url: string): Promise<PythonResult> {
   return new Promise((resolve, reject) => {
     const pythonScript = path.join(process.cwd(), "../browser-service/analyze_page.py");
     const venvPython = path.join(process.cwd(), "../browser-service/venv/bin/python");
@@ -62,14 +77,16 @@ function analyzePage(url: string): Promise<any> {
       }
 
       try {
-        const result = JSON.parse(stdout);
+        const result: PythonResult = JSON.parse(stdout);
         if (result.success) {
           resolve(result);
         } else {
-          reject(new Error(result.error));
+          reject(new Error(result.error || "Unknown analysis error"));
         }
-      } catch (e: any) {
-        reject(new Error(`Failed to parse Python output: ${e.message}`));
+      } catch (e) {
+        const message =
+          e instanceof Error ? e.message : "Unknown JSON parse error";
+        reject(new Error(`Failed to parse Python output: ${message}`));
       }
     });
 
@@ -140,12 +157,20 @@ export async function POST(req: NextRequest) {
         }
 
         results.push({ url: normalizedUrl, success: true });
-      } catch (error: any) {
-        results.push({ url: normalizedUrl, success: false, error: error.message });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unexpected error";
+        results.push({ url: normalizedUrl, success: false, error: message });
         
         // Add error log to ZIP
         const folderName = `page_${i + 1}_ERROR`;
-        zip.addFile(`${folderName}/error.txt`, Buffer.from(`Failed to analyze ${normalizedUrl}\n\nError: ${error.message}`, "utf8"));
+        zip.addFile(
+          `${folderName}/error.txt`,
+          Buffer.from(
+            `Failed to analyze ${normalizedUrl}\n\nError: ${message}`,
+            "utf8",
+          ),
+        );
       }
     }
 
@@ -165,15 +190,21 @@ ${results.map((r, i) => `${i + 1}. ${r.url} - ${r.success ? "✓ Success" : "✗
 
     const zipBuffer = zip.toBuffer();
 
-    return new Response(zipBuffer as any, {
+    return new Response(zipBuffer as unknown as BodyInit, {
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename=batch_analysis_${Date.now()}.zip`,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Batch analysis error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Unexpected error",
+      },
+      { status: 500 },
+    );
   }
 }
 

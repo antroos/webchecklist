@@ -37,4 +37,3 @@ EXPOSE 8080
 
 # Start Next.js
 CMD ["sh", "-c", "cd web && npm start"]
-
