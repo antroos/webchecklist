@@ -1,17 +1,7 @@
-# Multi-stage build for web UI + browser service
+# Use Node.js 20 with full system for Playwright
+FROM node:20
 
-FROM node:20-slim AS web-builder
-
-WORKDIR /app/web
-COPY web/package*.json ./
-RUN npm ci
-COPY web/ ./
-RUN npm run build
-
-# Final image with Node.js + Python + Playwright
-FROM node:20-slim
-
-# Install Python and dependencies
+# Install Python and system dependencies for Playwright
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -20,22 +10,17 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy Node.js parts
-COPY package*.json ./
-RUN npm ci --production
-
-# Copy built Next.js app
-COPY --from=web-builder /app/web/.next ./web/.next
-COPY --from=web-builder /app/web/public ./web/public
+# Install web dependencies
 COPY web/package*.json ./web/
-COPY web/next.config.ts ./web/
-COPY web/postcss.config.mjs ./web/
-COPY web/tsconfig.json ./web/
+RUN cd web && npm ci
 
-# Copy source code
-COPY src/ ./src/
+# Copy web source
+COPY web/ ./web/
 
-# Copy and setup Python service
+# Build Next.js app
+RUN cd web && npm run build
+
+# Setup Python service
 COPY browser-service/ ./browser-service/
 RUN cd browser-service && \
     python3 -m venv venv && \
@@ -44,12 +29,12 @@ RUN cd browser-service && \
     playwright install chromium && \
     playwright install-deps chromium
 
-# Set environment variables
+# Set environment
 ENV NODE_ENV=production
 ENV PORT=8080
 
 EXPOSE 8080
 
-# Start Next.js web server
+# Start Next.js
 CMD ["sh", "-c", "cd web && npm start"]
 

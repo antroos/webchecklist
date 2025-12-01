@@ -165,7 +165,7 @@ ${results.map((r, i) => `${i + 1}. ${r.url} - ${r.success ? "✓ Success" : "✗
 
     const zipBuffer = zip.toBuffer();
 
-    return new Response(zipBuffer, {
+    return new Response(zipBuffer as any, {
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename=batch_analysis_${Date.now()}.zip`,
