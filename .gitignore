@@ -1,0 +1,12 @@
+node_modules/
+.env
+*.log
+.DS_Store
+
+# Python
+browser-service/venv/
+browser-service/__pycache__/
+browser-service/*.pyc
+*.py[cod]
+*$py.class
+
