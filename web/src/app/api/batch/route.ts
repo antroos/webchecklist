@@ -4,8 +4,6 @@ import path from "path";
 import OpenAI from "openai";
 import AdmZip from "adm-zip";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 const SYSTEM_PROMPT = `Create a detailed checklist for website page testing in CSV format.
 
 CSV format (comma-separated):
@@ -90,6 +88,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "URLs array is required" }, { status: 400 });
     }
 
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "OPENAI_API_KEY is not set on the server" },
+        { status: 500 },
+      );
+    }
+
+    const openai = new OpenAI({ apiKey });
     const zip = new AdmZip();
     const results = [];
 
