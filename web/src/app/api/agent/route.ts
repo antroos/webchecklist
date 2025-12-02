@@ -43,12 +43,26 @@ DO NOT include backend functionality.
 
 Return ONLY CSV data, starting with the header. Generate 40-80 check items depending on page complexity.`;
 
-function extractUrlFromText(text: string): string | null {
+function extractAllUrlsFromText(text: string): string[] {
+  // Match full URLs and bare domains (e.g., snoopgame.com, https://snoopgame.com, www.snoopgame.com)
   const urlRegex =
-    /(https?:\/\/[^\s]+)|([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(\/[^\s]*)?/i;
-  const match = text.match(urlRegex);
-  if (!match) return null;
-  return match[0];
+    /(https?:\/\/[^\s]+)|((?:www\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(\/[^\s]*)?/gi;
+
+  const matches = text.match(urlRegex) || [];
+
+  // Normalize and deduplicate
+  const normalized = matches
+    .map((raw) => {
+      let url = raw.trim();
+      if (!url) return null;
+      if (!/^https?:\/\//i.test(url)) {
+        url = `https://${url}`;
+      }
+      return url;
+    })
+    .filter((u): u is string => Boolean(u));
+
+  return Array.from(new Set(normalized));
 }
 
 export async function POST(req: NextRequest) {
@@ -72,10 +86,18 @@ export async function POST(req: NextRequest) {
         const lastUser = [...messages].reverse().find((m) => m.role === "user");
         const userText = lastUser?.content ?? "";
 
-        let url = explicitUrl || extractUrlFromText(userText) || "";
-        url = url.trim();
+        // Build list of URLs to process
+        let urls: string[] = [];
 
-        if (!url) {
+        if (explicitUrl) {
+          urls = [explicitUrl];
+        } else {
+          urls = extractAllUrlsFromText(userText);
+        }
+
+        urls = urls.map((u) => u.trim()).filter(Boolean);
+
+        if (!urls.length) {
           controller.enqueue(
             encoder.encode(
               `data: ${JSON.stringify({ type: "error", message: "Please provide a URL in your message" })}\n\n`,
@@ -85,12 +107,10 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        if (!/^https?:\/\//i.test(url)) {
-          url = `https://${url}`;
-        }
-
-        sendLog(`📨 Received request for ${url}`);
-        sendLog(`🚀 Preparing to launch browser...`);
+        sendLog(`📨 Received request for ${urls.length} URL(s).`);
+        urls.forEach((url, index) => {
+          sendLog(`🔗 [${index + 1}/${urls.length}] ${url}`);
+        });
 
         // In Cloud Run container, cwd is /app/web, so we go up to /app
         // In local dev, cwd might be different, so we use relative path
@@ -114,84 +134,6 @@ export async function POST(req: NextRequest) {
           sendLog(`⚠️ Could not check file existence: ${e}`);
         }
 
-        sendLog(`🔧 Spawning Python process...`);
-
-        const pythonProcess = spawn(venvPython, [pythonScript, url], {
-          cwd: projectRoot,
-          env: { ...process.env },
-        });
-
-        sendLog(`✓ Python process spawned (PID: ${pythonProcess.pid})`);
-
-        let stdout = "";
-        let stderr = "";
-        let stderrLineCount = 0;
-
-        pythonProcess.stdout.on("data", (data) => {
-          stdout += data.toString();
-          sendLog(`📤 [stdout] ${data.toString().substring(0, 200)}`);
-        });
-
-        pythonProcess.stderr.on("data", (data) => {
-          const chunk = data.toString();
-          stderr += chunk;
-          stderrLineCount++;
-          
-          // Forward each line from Python stderr
-          const lines = chunk.split('\n').filter((l: string) => l.trim());
-          for (const line of lines) {
-            sendLog(line);
-          }
-        });
-
-        pythonProcess.on("error", (err) => {
-          sendLog(`❌ Python process error: ${err.message}`);
-        });
-
-        const pythonResult = await new Promise<{ analysis: string; raw: unknown }>((resolve, reject) => {
-          let timeoutHandle: NodeJS.Timeout;
-          
-          pythonProcess.on("close", (code, signal) => {
-            clearTimeout(timeoutHandle);
-            sendLog(`🏁 Python process closed (code: ${code}, signal: ${signal})`);
-            sendLog(`📊 Total stderr lines: ${stderrLineCount}`);
-            sendLog(`📊 Total stdout length: ${stdout.length} chars`);
-
-            if (code !== 0) {
-              reject(new Error(`Python exited with code ${code}. stderr: ${stderr.substring(0, 500)}`));
-              return;
-            }
-
-            try {
-              const parsed = JSON.parse(stdout);
-              if (!parsed.success) {
-                reject(new Error(parsed.error ?? "Page analysis failed"));
-                return;
-              }
-              resolve({ analysis: parsed.data, raw: parsed.raw });
-            } catch (e) {
-              const message =
-                e instanceof Error ? e.message : "Unknown JSON parse error";
-              reject(new Error(`Failed to parse Python output: ${message}. First 500 chars: ${stdout.substring(0, 500)}`));
-            }
-          });
-
-          timeoutHandle = setTimeout(() => {
-            sendLog(`⏱️ Timeout reached, killing Python process...`);
-            pythonProcess.kill('SIGTERM');
-            setTimeout(() => {
-              if (!pythonProcess.killed) {
-                sendLog(`⏱️ Force killing Python process...`);
-                pythonProcess.kill('SIGKILL');
-              }
-            }, 5000);
-            reject(new Error(`Browser analysis timeout (3 minutes). Got ${stderrLineCount} stderr lines.`));
-          }, 180000); // 3 minutes
-        });
-
-        sendLog("✅ Page analysis complete");
-        sendLog("🤖 Generating CSV checklist with GPT-4o...");
-
         const apiKey = process.env.OPENAI_API_KEY;
         if (!apiKey) {
           throw new Error("OPENAI_API_KEY is not set on the server");
@@ -199,35 +141,134 @@ export async function POST(req: NextRequest) {
 
         const openai = new OpenAI({ apiKey });
 
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            {
-              role: "user",
-              content: `Based on analysis of page ${url}, create a detailed checklist.\n\nHere is the page analysis:\n\n${pythonResult.analysis}`,
-            },
-          ],
-          temperature: 0.7,
-          max_tokens: 4000,
-        });
+        for (let index = 0; index < urls.length; index++) {
+          const url = urls[index];
 
-        const csv = completion.choices[0]?.message?.content ?? "";
+          sendLog(`🚀 [${index + 1}/${urls.length}] Preparing to launch browser for ${url}...`);
 
-        sendLog("✅ Checklist generated successfully");
+          sendLog(`🔧 Spawning Python process...`);
 
-        // Send final result
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ 
-              type: "result", 
-              url, 
-              csv, 
-              raw: pythonResult.raw 
-            })}\n\n`,
-          ),
-        );
+          const pythonProcess = spawn(venvPython, [pythonScript, url], {
+            cwd: projectRoot,
+            env: { ...process.env },
+          });
 
+          sendLog(`✓ Python process spawned (PID: ${pythonProcess.pid})`);
+
+          let stdout = "";
+          let stderr = "";
+          let stderrLineCount = 0;
+
+          pythonProcess.stdout.on("data", (data) => {
+            stdout += data.toString();
+            sendLog(`📤 [stdout] ${data.toString().substring(0, 200)}`);
+          });
+
+          pythonProcess.stderr.on("data", (data) => {
+            const chunk = data.toString();
+            stderr += chunk;
+            stderrLineCount++;
+            
+            // Forward each line from Python stderr
+            const lines = chunk.split('\n').filter((l: string) => l.trim());
+            for (const line of lines) {
+              sendLog(line);
+            }
+          });
+
+          pythonProcess.on("error", (err) => {
+            sendLog(`❌ Python process error: ${err.message}`);
+          });
+
+          try {
+            const pythonResult = await new Promise<{ analysis: string; raw: unknown }>((resolve, reject) => {
+              let timeoutHandle: NodeJS.Timeout;
+              
+              pythonProcess.on("close", (code, signal) => {
+                clearTimeout(timeoutHandle);
+                sendLog(`🏁 Python process closed for ${url} (code: ${code}, signal: ${signal})`);
+                sendLog(`📊 Total stderr lines: ${stderrLineCount}`);
+                sendLog(`📊 Total stdout length: ${stdout.length} chars`);
+
+                if (code !== 0) {
+                  reject(new Error(`Python exited with code ${code}. stderr: ${stderr.substring(0, 500)}`));
+                  return;
+                }
+
+                try {
+                  const parsed = JSON.parse(stdout);
+                  if (!parsed.success) {
+                    reject(new Error(parsed.error ?? "Page analysis failed"));
+                    return;
+                  }
+                  resolve({ analysis: parsed.data, raw: parsed.raw });
+                } catch (e) {
+                  const message =
+                    e instanceof Error ? e.message : "Unknown JSON parse error";
+                  reject(new Error(`Failed to parse Python output: ${message}. First 500 chars: ${stdout.substring(0, 500)}`));
+                }
+              });
+
+              timeoutHandle = setTimeout(() => {
+                sendLog(`⏱️ Timeout reached, killing Python process for ${url}...`);
+                pythonProcess.kill('SIGTERM');
+                setTimeout(() => {
+                  if (!pythonProcess.killed) {
+                    sendLog(`⏱️ Force killing Python process for ${url}...`);
+                    pythonProcess.kill('SIGKILL');
+                  }
+                }, 5000);
+                reject(new Error(`Browser analysis timeout (3 minutes) for ${url}. Got ${stderrLineCount} stderr lines.`));
+              }, 180000); // 3 minutes
+            });
+
+            sendLog(`✅ Page analysis complete for ${url}`);
+            sendLog("🤖 Generating CSV checklist with GPT-4o...");
+
+            const completion = await openai.chat.completions.create({
+              model: "gpt-4o",
+              messages: [
+                { role: "system", content: SYSTEM_PROMPT },
+                {
+                  role: "user",
+                  content: `Based on analysis of page ${url}, create a detailed checklist.\n\nHere is the page analysis:\n\n${pythonResult.analysis}`,
+                },
+              ],
+              temperature: 0.7,
+              max_tokens: 4000,
+            });
+
+            const csv = completion.choices[0]?.message?.content ?? "";
+
+            sendLog(`✅ Checklist generated successfully for ${url}`);
+
+            // Send result for this URL
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ 
+                  type: "result", 
+                  url, 
+                  csv, 
+                  raw: pythonResult.raw 
+                })}\n\n`,
+              ),
+            );
+          } catch (urlError) {
+            const message =
+              urlError instanceof Error
+                ? urlError.message
+                : "Unexpected error during page analysis";
+            sendLog(`❌ Failed to process ${url}: ${message}`);
+            const fullMessage = `Failed to process ${url}: ${message}`;
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ type: "error", message: fullMessage })}\n\n`,
+              ),
+            );
+          }
+        }
+
+        sendLog("✅ Finished processing all URLs.");
         controller.close();
       } catch (error) {
         const message =

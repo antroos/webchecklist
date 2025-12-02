@@ -30,6 +30,7 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -49,6 +50,9 @@ export default function Home() {
     setInput("");
     setIsLoading(true);
 
+    const controller = new AbortController();
+    setAbortController(controller);
+
     try {
       const res = await fetch("/api/agent", {
         method: "POST",
@@ -58,6 +62,7 @@ export default function Home() {
         body: JSON.stringify({
           messages: nextMessages.map(({ role, content }) => ({ role, content })),
         }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -130,23 +135,41 @@ export default function Home() {
         }
       }
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Network error while calling /api/agent.";
-      setError(message);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `err-${Date.now()}`,
-          role: "assistant",
-          kind: "plain",
-          content: message,
-        },
-      ]);
+      if (err instanceof Error && err.name === "AbortError") {
+        const message = "⏹️ Processing stopped by user.";
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `stopped-${Date.now()}`,
+            role: "assistant",
+            kind: "plain",
+            content: message,
+          },
+        ]);
+      } else {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Network error while calling /api/agent.";
+        setError(message);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `err-${Date.now()}`,
+            role: "assistant",
+            kind: "plain",
+            content: message,
+          },
+        ]);
+      }
     } finally {
+      setAbortController(null);
       setIsLoading(false);
     }
+  }
+
+  function handleStop() {
+    abortController?.abort();
   }
 
   function renderMessage(message: ChatMessage) {
@@ -315,13 +338,23 @@ export default function Home() {
                 browser.
               </p>
             </div>
-            <button
-              type="submit"
-              disabled={isLoading || !input.trim()}
-              className="h-10 rounded-xl bg-emerald-500 px-4 text-sm font-medium text-black hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-700"
-            >
-              {isLoading ? "Working..." : "Send"}
-            </button>
+            {isLoading ? (
+              <button
+                type="button"
+                onClick={handleStop}
+                className="h-10 rounded-xl bg-red-500 px-4 text-sm font-medium text-white hover:bg-red-400"
+              >
+                Stop
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!input.trim()}
+                className="h-10 rounded-xl bg-emerald-500 px-4 text-sm font-medium text-black hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-700"
+              >
+                Send
+              </button>
+            )}
           </form>
         </main>
       </div>
