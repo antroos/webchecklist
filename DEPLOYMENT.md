@@ -140,6 +140,29 @@ gcloud run logs tail webchecklist --region=us-central1
 
 ---
 
+## 🤖 GitHub Actions CI/CD (автодеплой)
+
+У репозиторії є workflow-и:
+- `/.github/workflows/deploy-test.yml` — **push в `dev`** → деплой на **Cloud Run TEST** (`webchecklist-test`)
+- `/.github/workflows/deploy-prod.yml` — **push в `main`** → деплой на **Cloud Run PROD** (`webchecklist`)
+
+### Що потрібно налаштувати (разово в GCP)
+
+Рекомендований спосіб — **Workload Identity Federation (OIDC)** (без зберігання JSON ключів у GitHub).
+
+GitHub Secrets, які мають бути додані в репозиторій:
+- `GCP_PROJECT_ID` — наприклад `webtest-479911`
+- `GCP_REGION` — наприклад `us-central1`
+- `GCP_WIF_PROVIDER` — resource name провайдера WIF (OIDC)
+- `GCP_SA_EMAIL` — email service account (наприклад `github-deployer@...`)
+- `OPENAI_API_KEY` — ключ OpenAI (буде переданий в Cloud Run як env var)
+
+### Примітка
+- Локальні скрипти `deploy-*.sh` читають `OPENAI_API_KEY` з `web/.env.local`.
+- CI/CD workflow-и беруть `OPENAI_API_KEY` з GitHub Secrets і передають його через `--set-env-vars`.
+
+---
+
 ## ✅ Checklist перед prod deployment
 
 - [ ] Код протестований локально

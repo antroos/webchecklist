@@ -1,0 +1,47 @@
+name: Deploy (TEST)
+
+on:
+  push:
+    branches: [dev]
+
+concurrency:
+  group: deploy-test
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Recommended auth method (no long-lived keys):
+      # Use Workload Identity Federation with google-github-actions/auth
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Deploy to Cloud Run (TEST)
+        run: |
+          gcloud run deploy webchecklist-test \
+            --source . \
+            --region "${{ secrets.GCP_REGION }}" \
+            --allow-unauthenticated \
+            --set-env-vars "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" \
+            --timeout=600 \
+            --memory=2Gi \
+            --cpu=2 \
+            --project "${{ secrets.GCP_PROJECT_ID }}"
+
+

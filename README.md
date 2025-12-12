@@ -1,25 +1,25 @@
 # Web Checklist Generator
 
-AI-powered system for generating website testing checklists.
+AI-powered system for generating website testing checklists (web-only).
 
 ## Architecture
 
-The project consists of two services:
+The project consists of two parts:
 
-1. **Telegram Bot** (Node.js) - user interface for interaction
-2. **Browser Service** (Python) - page analysis using Playwright and checklist generation
+1. **Web app** (Next.js) - UI + API routes (SSE + REST)
+2. **Browser Service** (Python) - page analysis using Playwright (HTML/DOM snapshot for the LLM)
 
 ## Installation
 
-### 1. Telegram Bot
+### 1. Web app
 
 ```bash
+cd web
 npm install
 ```
 
-Create `.env`:
+Create `web/.env.local`:
 ```
-TELEGRAM_BOT_TOKEN=your_telegram_token
 OPENAI_API_KEY=your_openai_key
 ```
 
@@ -33,31 +33,24 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
-Create `browser-service/.env`:
-```
-OPENAI_API_KEY=your_openai_key
-PORT=5001
-```
-
 ## Usage
 
-### Run the bot:
+### Run the web app:
 
 ```bash
+cd web
 npm run dev
 ```
 
-The bot will automatically call the Python script to analyze pages when you send a URL.
+The web app will call the Python analyzer to open the page and generate a CSV checklist.
 
 ## How it works
 
-1. Open the bot in Telegram: @webchecklist_bot
-2. Send `/start`
-3. Send a page URL for analysis
-4. The bot opens the page in a browser (Playwright)
-5. Collects all page elements (texts, images, buttons, links, etc.)
-6. Generates a detailed CSV checklist using GPT-4o
-7. Sends you the CSV file
+1. Paste a page URL in the web UI
+2. The backend opens the page in a real browser (Playwright)
+3. Extracts page structure (texts, images, buttons, links, forms, etc.)
+4. Generates a detailed CSV checklist using GPT-4o
+5. You can download CSV + JSON snapshot (and HTML copy if needed)
 
 ## CSV Format
 
@@ -71,12 +64,11 @@ Check,Opera GX,Chrome,Android Chrome,Android Browser,iOS Chrome,iOS Safari,MacOS
 ## Deployment
 
 Ready to deploy on:
-- Telegram bot: Local or VPS (requires browser automation)
-- Future: Web interface for Vercel/Netlify
+- Web app: Cloud Run / Vercel (Node runtime required; Python analyzer must be available in the build image)
 
 ## Roadmap
 
-- [ ] Web interface (instead of Telegram)
+- [ ] Public landing → connect to web analyzer endpoint
 - [ ] Export checklists to Google Sheets
 - [ ] Support multiple pages at once
 - [ ] Analysis history
