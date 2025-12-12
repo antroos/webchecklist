@@ -11,6 +11,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: test
     permissions:
       contents: read
       id-token: write
@@ -38,6 +39,7 @@ jobs:
             --source . \
             --region "${{ secrets.GCP_REGION }}" \
             --allow-unauthenticated \
+            --service-account "${{ secrets.GCP_SA_EMAIL }}" \
             --set-env-vars "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" \
             --timeout=600 \
             --memory=2Gi \
