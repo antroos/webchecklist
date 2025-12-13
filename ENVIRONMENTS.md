@@ -9,6 +9,17 @@
 
 ---
 
+## ✅ Canonical URL rule (важливо для Google OAuth)
+
+Для кожного середовища є **канонічний URL**, який має збігатися з `NEXTAUTH_URL`.
+
+- **PROD canonical**: `https://webmorpher.com`
+- **TEST canonical**: `gcloud run services describe webchecklist-test ... value(status.url)` (це зазвичай `https://webchecklist-test-<hash>.a.run.app`)
+
+Чому це важливо: якщо відкривати TEST/PROD через інший домен (наприклад `...run.app` з project-number), cookies NextAuth можуть “розʼїхатись” між доменами → OAuth може падати або вимагати повторний клік.
+
+У коді є захист: `web/src/middleware.ts` робить 308 redirect на canonical host з `NEXTAUTH_URL`.
+
 ## 🔄 Development Workflow
 
 ```bash
@@ -71,23 +82,11 @@ gcloud run services describe webchecklist-test --project webtest-479911 --region
 
 ---
 
-## 📈 Next Steps (Optional)
+## 📈 Release cadence (пакетно)
 
-Want to automate this further?
-
-### Option 1: GitHub Actions (CI/CD) ✅ (вже додано)
-- Auto-deploy to TEST on push to `dev` branch (`deploy-test.yml`)
-- Auto-deploy to PROD on push to `main` branch (`deploy-prod.yml`)
-- Requires GitHub Secrets for GCP auth + `OPENAI_API_KEY`
-
-### Option 2: Git Branches
-- `dev` branch → TEST environment
-- `main` branch → PROD environment
-- Pull request required for `dev` → `main`
-
-Let me know if you want me to set this up! 🚀
-
-Already set up: see `DEPLOYMENT.md` and `RUNBOOK.md`.
+- Працюємо в feature branches → merge в `dev` → автодеплой на TEST.
+- **Раз на день** (або “коли власник скаже”) робимо один Release PR `dev → main`.
+- PROD деплой відбувається тільки після **Approve and deploy** (GitHub Environment `production`).
 
 ---
 
@@ -99,4 +98,7 @@ When you map a custom domain (e.g. `webmorpher.com`) to Cloud Run:
   - `https://webmorpher.com/api/auth/callback/google`
 - Configure Stripe webhook to hit:
   - `https://webmorpher.com/api/stripe/webhook`
+
+For TEST, recommended:
+- Use the canonical Cloud Run URL from `status.url` OR map `test.webmorpher.com` to `webchecklist-test` and set `NEXTAUTH_URL` accordingly.
 

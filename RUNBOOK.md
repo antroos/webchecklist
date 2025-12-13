@@ -11,6 +11,11 @@
 gcloud run services describe webchecklist-test --project webtest-479911 --region us-central1 --format='value(status.url)'
 ```
 
+### Canonical host правило (важливо)
+
+- `NEXTAUTH_URL` має збігатися з **canonical URL**, який бачить користувач.
+- В коді є захист від “двох доменів” (що ламало OAuth): `web/src/middleware.ts` робить 308 redirect на canonical host з `NEXTAUTH_URL`.
+
 ## 1) Як деплоїти (рекомендовано)
 
 ### TEST (авто)
@@ -35,6 +40,28 @@ gcloud run services describe webchecklist-test --project webtest-479911 --region
 3) В `Deploy (PROD)` натисни **Approve and deploy**
 4) Smoke-test на PROD (див. нижче)
 
+## 1.1) GitHub guardrails (щоб прод не деплоївся “випадково”)
+
+### A) GitHub Environments
+GitHub → Repo → Settings → Environments:
+- `production`:
+  - Required reviewers: **ти (і/або ще 1 людина)**
+  - (optional) Wait timer 2–5 хв
+
+### B) Branch protection для `main`
+GitHub → Repo → Settings → Branches → Branch protection rules:
+- Require a pull request before merging
+- Require approvals (мінімум 1)
+- Require status checks to pass (рекомендовано: Deploy(TEST) green + build)
+- Block force pushes
+
+### Release cadence (пакетно: 1 раз/день або “коли скажеш”)
+1) Протягом дня: feature branches → merge в `dev` (TEST автодеплой).\n
+2) Раз на день: створюємо **Release PR** `dev → main`.\n
+3) Після тесту: merge PR.\n
+4) В `Deploy (PROD)` робимо **Approve and deploy**.\n
+5) Smoke-test на PROD (секція нижче).
+
 ## 2) Smoke-test (після кожного деплою)
 
 ### Auth (має працювати в першу чергу)
@@ -53,6 +80,24 @@ gcloud run services describe webchecklist-test --project webtest-479911 --region
 ### Основний сервіс
 - `/app` без сесії має редіректити на `/auth/signin?callbackUrl=/app`
 - після логіну `/app` має відкривати основний інтерфейс
+
+### Billing (мінімум)
+- `/app/billing` відкривається після логіну
+- `POST /api/billing/checkout?plan=starter|pro` повертає URL Stripe Checkout
+- Stripe webhook endpoint відповідає 2xx на події (див. Stripe Dashboard → Webhooks → Attempts)
+
+### Daily release checklist (5–10 хв)
+TEST (перед Release PR):
+- [ ] `GET <testUrl>/api/auth/providers` → 200 JSON
+- [ ] `GET <testUrl>/auth/signin?callbackUrl=%2Fapp` → login → `/app`
+- [ ] 1 аналіз у Workspace (переконатись, що /api/agent працює)
+- [ ] `GET <testUrl>/app/billing` відкривається після логіну
+- [ ] (якщо чіпали billing) checkout відкривається і webhook attempts без помилок
+
+PROD (після approve):
+- [ ] `GET https://webmorpher.com/api/auth/providers` → 200 JSON
+- [ ] `GET https://webmorpher.com/auth/signin?callbackUrl=%2Fapp` → login → `/app`
+- [ ] `/app/billing` відкривається після логіну
 
 ## 3) “Нічого не працює, але я міняв secrets”
 
@@ -118,6 +163,14 @@ gcloud run revisions list --service=webchecklist --project webtest-479911 --regi
 gcloud run services update-traffic webchecklist --project webtest-479911 --region us-central1 \
   --to-revisions=<revisionName>=100
 ```
+
+## 7) Manual deploy policy (дозволено, але рідко)
+
+Ручний деплой (`gcloud run deploy ...` або `deploy-*.sh`) **дозволений**, але тільки:
+- для аварій/rollback/hotfix, або коли GitHub Actions тимчасово не працює;
+- з обовʼязковим записом “що деплоїли і чому” (issue/нотатка) і smoke-test після.
+
+Рекомендація: в нормальному циклі **не** деплоїти руками; використовувати `dev` → TEST → PR → `main` → approval → PROD.
 
 ---
 

@@ -42,6 +42,10 @@
 4. **Merge в `main`** → автодеплой на **PROD** (workflow `Deploy (PROD)`).
    - Для максимальної безпеки увімкни GitHub Environment `production` з Required reviewers (тоді буде manual approval).
 
+### Release cadence (пакетно)
+- Працюємо в feature branches → merge в `dev` → TEST автодеплой.
+- Раз на день (або “коли власник скаже”) робимо **Release PR** `dev → main` і один прод-approve на весь пакет.
+
 ### Якщо GitHub Actions тимчасово не працює (fallback)
 - Деплой руками скриптами:
   - `./deploy-test.sh`
@@ -164,7 +168,9 @@ gcloud run logs tail webchecklist --region=us-central1
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `NEXTAUTH_SECRET`
-- `NEXTAUTH_URL` — має збігатися з доменом, який бачить користувач (наприклад `https://webmorpher.com`)
+- `NEXTAUTH_URL` — має збігатися з **canonical URL** (який бачить користувач).
+  - PROD: `https://webmorpher.com`
+  - TEST: `gcloud run services describe webchecklist-test ... value(status.url)`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_PRICE_STARTER` — Starter $9/mo price id (fixed recurring)
@@ -182,6 +188,11 @@ Webhook endpoint:
 У репозиторії є workflow-и:
 - `/.github/workflows/deploy-test.yml` — **push в `dev`** → деплой на **Cloud Run TEST** (`webchecklist-test`)
 - `/.github/workflows/deploy-prod.yml` — **push в `main`** → деплой на **Cloud Run PROD** (`webchecklist`)
+
+### Як уникнути “випадкового” прод-деплою
+1) Увімкнути `production` environment з **Required reviewers**.\n
+2) Увімкнути branch protection для `main` (Require PR + approvals).\n
+3) Релізити пакетно через Release PR `dev → main` (див. `RUNBOOK.md`).
 
 ### Що потрібно налаштувати (разово в GCP)
 
@@ -208,6 +219,15 @@ GitHub Secrets, які мають бути додані в репозиторі�
 - `test` — без approval
 - `production` — з Required reviewers (manual approval на прод деплой)
 
+### Branch Protection (рекомендовано, щоб не “випадково” деплоїти в прод)
+GitHub → Settings → Branches → Branch protection rules:
+- для `main`:
+  - Require a pull request before merging
+  - Require approvals (мінімум 1)
+  - (опційно) Require status checks to pass (Deploy(TEST) green / build)
+  - Block force pushes
+  - Restrict who can push to matching branches (опційно)
+
 ### Примітка
 - Локальні скрипти `deploy-*.sh` читають `OPENAI_API_KEY` з `web/.env.local`.
 - CI/CD workflow-и беруть secrets з GitHub Secrets і передають їх через `--set-env-vars`.
@@ -225,6 +245,10 @@ GitHub Secrets, які мають бути додані в репозиторі�
 - у Google OAuth client додати redirect URI:
   - `https://webmorpher.com/api/auth/callback/google`
   - (і тестовий домен, якщо буде)
+
+### Примітка про TEST URL
+Cloud Run може мати кілька URL для одного сервісу. Для OAuth стабільності використовуйте canonical URL з `status.url` (зазвичай `*.a.run.app`).
+У коді є 308 redirect на canonical host: `web/src/middleware.ts`.
 
 ---
 

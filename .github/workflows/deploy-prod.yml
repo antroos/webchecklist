@@ -13,6 +13,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
+    # IMPORTANT:
+    # This job must be protected by GitHub Environment `production` required reviewers.
+    # Also enable Branch Protection on `main` (Require PR + approvals) to prevent accidental prod deploys.
     permissions:
       contents: read
       id-token: write
