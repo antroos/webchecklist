@@ -10,6 +10,28 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // Enforce a canonical host so NextAuth cookies/state don't split across
+  // multiple Cloud Run URLs (e.g. project-number run.app vs service a.run.app).
+  // This is critical for OAuth flows; otherwise the first login can fail and the
+  // second succeeds due to cookies being on different hosts.
+  const configured = process.env.NEXTAUTH_URL;
+  if (configured) {
+    try {
+      const canonicalHost = new URL(configured).host;
+      const reqHost =
+        req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
+      if (canonicalHost && reqHost && canonicalHost !== reqHost) {
+        const url = req.nextUrl.clone();
+        url.host = canonicalHost;
+        // Keep protocol aligned with the configured URL.
+        url.protocol = new URL(configured).protocol;
+        return NextResponse.redirect(url, 308);
+      }
+    } catch {
+      // ignore invalid NEXTAUTH_URL
+    }
+  }
+
   const forwardedProto = req.headers.get("x-forwarded-proto");
   if (forwardedProto === "http") {
     const url = req.nextUrl.clone();
