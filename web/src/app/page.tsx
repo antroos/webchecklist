@@ -181,11 +181,11 @@ export default function Home() {
           key={message.id}
           className={`flex ${isAssistant ? "justify-start" : "justify-end"}`}
         >
-          <div className="max-w-full space-y-3 rounded-2xl border border-emerald-700 bg-zinc-900/80 p-3 text-sm shadow-lg shadow-emerald-900/40 md:max-w-3xl">
-            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-300">
+          <div className="max-w-full space-y-3 rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.88)] p-3 text-sm shadow-[var(--shadow-sm)] md:max-w-3xl">
+            <div className="text-xs font-semibold uppercase tracking-wide text-[color:rgba(11,18,32,0.72)]">
               Result
             </div>
-            <div className="text-sm font-medium text-zinc-100">
+            <div className="text-sm font-medium text-[color:rgba(11,18,32,0.92)]">
               {message.content}
             </div>
 
@@ -202,7 +202,7 @@ export default function Home() {
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
-                className="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-500"
+                className="h-8 rounded-lg bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-3 text-xs font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.22)] hover:brightness-[1.02]"
               >
                 📄 Download CSV
               </button>
@@ -221,7 +221,7 @@ export default function Home() {
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
-                className="h-8 rounded-lg bg-blue-600 px-3 text-xs font-medium text-white hover:bg-blue-500"
+                className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.85)] px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-[color:rgba(255,255,255,0.95)]"
               >
                 📊 Download JSON
               </button>
@@ -237,7 +237,7 @@ export default function Home() {
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
-                className="h-8 rounded-lg bg-purple-600 px-3 text-xs font-medium text-white hover:bg-purple-500"
+                className="h-8 rounded-lg border border-[color:rgba(97,106,243,0.22)] bg-[color:rgba(97,106,243,0.10)] px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-[color:rgba(97,106,243,0.14)]"
               >
                 🌐 Download HTML
               </button>
@@ -245,18 +245,18 @@ export default function Home() {
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1">
-                <h3 className="text-xs font-semibold text-zinc-300">
+                <h3 className="text-xs font-semibold text-[color:rgba(11,18,32,0.72)]">
                   CSV Checklist (preview)
                 </h3>
-                <pre className="max-h-64 overflow-auto rounded-lg border border-zinc-800 bg-black/70 p-2 text-[11px] text-zinc-100">
+                <pre className="max-h-64 overflow-auto rounded-lg border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.92)] p-2 text-[11px] text-[color:rgba(11,18,32,0.86)]">
                   {(message.csv as string).slice(0, 4000)}
                 </pre>
               </div>
               <div className="space-y-1">
-                <h3 className="text-xs font-semibold text-zinc-300">
+                <h3 className="text-xs font-semibold text-[color:rgba(11,18,32,0.72)]">
                   Raw Page Analysis (JSON snapshot)
                 </h3>
-                <pre className="max-h-64 overflow-auto rounded-lg border border-zinc-800 bg-black/70 p-2 text-[11px] text-zinc-100">
+                <pre className="max-h-64 overflow-auto rounded-lg border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.92)] p-2 text-[11px] text-[color:rgba(11,18,32,0.86)]">
                   {JSON.stringify(message.raw, null, 2).slice(0, 4000)}
                 </pre>
               </div>
@@ -267,11 +267,13 @@ export default function Home() {
     }
 
     const bubbleClasses = isAssistant
-      ? "bg-zinc-900/80 border-zinc-800 text-zinc-100"
-      : "bg-emerald-600 text-black border-emerald-400";
+      ? "bg-[color:rgba(255,255,255,0.88)] border-[color:rgba(15,23,42,0.10)] text-[color:rgba(11,18,32,0.90)]"
+      : "bg-[color:rgba(97,106,243,0.12)] border-[color:rgba(97,106,243,0.22)] text-[color:rgba(11,18,32,0.92)]";
 
     const textClasses =
-      message.kind === "status" ? "text-xs text-zinc-300" : "text-sm";
+      message.kind === "status"
+        ? "text-xs text-[color:rgba(11,18,32,0.68)]"
+        : "text-sm";
 
     return (
       <div
@@ -288,28 +290,28 @@ export default function Home() {
   }
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-50">
-      <div className="m-auto flex h-[90vh] w-full max-w-5xl flex-col rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-2xl shadow-black/40">
-        <header className="mb-3 flex items-center justify-between gap-3 border-b border-zinc-800 pb-2">
+    <div className="flex min-h-screen bg-[color:var(--bg)] text-[color:var(--text)]">
+      <div className="m-auto flex h-[90vh] w-full max-w-5xl flex-col rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 shadow-[var(--shadow)]">
+        <header className="mb-3 flex items-center justify-between gap-3 border-b border-[color:rgba(15,23,42,0.08)] pb-2">
           <div>
-            <h1 className="text-lg font-semibold">Web Checklist Assistant</h1>
-            <p className="text-xs text-zinc-400">
+            <h1 className="text-lg font-semibold">WebTest</h1>
+            <p className="text-xs text-[color:rgba(11,18,32,0.72)]">
               Chat interface for opening real pages in a browser, analyzing
               structure and generating CSV test checklists.
             </p>
           </div>
-          <div className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-200">
-            Live browser · CSV checklist
+          <div className="rounded-full border border-[color:rgba(97,106,243,0.28)] bg-[color:rgba(97,106,243,0.12)] px-3 py-1 text-[11px] font-medium text-[color:rgba(11,18,32,0.84)]">
+            Real browser · CSV checklist
           </div>
         </header>
 
         <main className="flex flex-1 flex-col gap-3 overflow-hidden">
-          <div className="flex-1 space-y-2 overflow-y-auto rounded-xl border border-zinc-800 bg-black/40 p-3">
+          <div className="flex-1 space-y-2 overflow-y-auto rounded-[var(--radius-sm)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)] p-3">
             {messages.map((m) => renderMessage(m))}
             {isLoading && (
               <div className="flex justify-start">
-                <div className="inline-flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+                <div className="inline-flex items-center gap-2 rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.8)] px-3 py-1.5 text-xs text-[color:rgba(11,18,32,0.72)]">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[color:var(--ok)]" />
                   Analyzing page and generating checklist...
                 </div>
               </div>
@@ -317,7 +319,7 @@ export default function Home() {
           </div>
 
           {error && (
-            <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs text-red-200">
+            <div className="rounded-lg border border-[color:rgba(239,68,68,0.25)] bg-[color:rgba(239,68,68,0.08)] px-3 py-1.5 text-xs text-[color:rgba(185,28,28,0.95)]">
               {error}
             </div>
           )}
@@ -326,12 +328,12 @@ export default function Home() {
             <div className="flex-1">
               <textarea
                 rows={2}
-                className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-50 outline-none ring-0 focus:border-emerald-500"
+                className="w-full resize-none rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.95)] px-3 py-2 text-sm text-[color:rgba(11,18,32,0.9)] outline-none ring-0 placeholder:text-[color:rgba(11,18,32,0.45)] focus:border-[color:rgba(97,106,243,0.55)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.14)]"
                 placeholder="Send a URL or instruction, e.g. “Проаналізуй snoopgame.com і зроби чекліст для всіх форм, кнопок і навігації”."
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
               />
-              <p className="mt-1 text-[11px] text-zinc-500">
+              <p className="mt-1 text-[11px] text-[color:rgba(11,18,32,0.60)]">
                 Tip: you can just paste a domain like <code>snoopgame.com</code>
                 {" "}
                 – the assistant will normalize it to https:// and open in
@@ -342,7 +344,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={handleStop}
-                className="h-10 rounded-xl bg-red-500 px-4 text-sm font-medium text-white hover:bg-red-400"
+                className="h-10 rounded-xl bg-[color:rgba(239,68,68,0.92)] px-4 text-sm font-medium text-white hover:bg-[color:rgba(239,68,68,0.82)]"
               >
                 Stop
               </button>
@@ -350,7 +352,7 @@ export default function Home() {
               <button
                 type="submit"
                 disabled={!input.trim()}
-                className="h-10 rounded-xl bg-emerald-500 px-4 text-sm font-medium text-black hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-700"
+                className="h-10 rounded-xl bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-4 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.28)] hover:brightness-[1.02] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
               >
                 Send
               </button>

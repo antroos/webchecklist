@@ -1,0 +1,48 @@
+name: Deploy (PROD)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Deploy to Cloud Run (PROD)
+        run: |
+          gcloud run deploy webchecklist \
+            --source . \
+            --region "${{ secrets.GCP_REGION }}" \
+            --allow-unauthenticated \
+            --service-account "${{ secrets.GCP_SA_EMAIL }}" \
+            --set-env-vars "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" \
+            --timeout=600 \
+            --memory=2Gi \
+            --cpu=2 \
+            --project "${{ secrets.GCP_PROJECT_ID }}"
+
+

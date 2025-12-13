@@ -15,14 +15,14 @@
 # 1. Розробка і тестування локально
 cd web && npm run dev
 
-# 2. Деплой на TEST
-./deploy-test.sh
+# 2. Деплой на TEST (рекомендовано — через GitHub Actions)
+# push/merge в dev → Deploy (TEST)
 
 # 3. Тестування на TEST середовищі
 open https://webchecklist-test-346608061984.us-central1.run.app
 
-# 4. Якщо все ОК → деплой на PROD
-./deploy-prod.sh
+# 4. Якщо все ОК → деплой на PROD (рекомендовано — через GitHub Actions)
+# PR dev→main, merge main → Deploy (PROD)
 ```
 
 ---
@@ -74,10 +74,10 @@ open https://webchecklist-test-346608061984.us-central1.run.app
 
 Want to automate this further?
 
-### Option 1: GitHub Actions (CI/CD)
-- Auto-deploy to TEST on push to `dev` branch
-- Auto-deploy to PROD on push to `main` branch
-- Run tests before deployment
+### Option 1: GitHub Actions (CI/CD) ✅ (вже додано)
+- Auto-deploy to TEST on push to `dev` branch (`deploy-test.yml`)
+- Auto-deploy to PROD on push to `main` branch (`deploy-prod.yml`)
+- Requires GitHub Secrets for GCP auth + `OPENAI_API_KEY`
 
 ### Option 2: Git Branches
 - `dev` branch → TEST environment
