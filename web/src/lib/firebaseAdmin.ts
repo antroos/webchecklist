@@ -1,9 +1,7 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
-function loadServiceAccountFromEnv():
-  | Record<string, unknown>
-  | undefined {
+function loadServiceAccountFromEnv(): Record<string, unknown> | undefined {
   const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (rawJson && rawJson.trim()) {
     return JSON.parse(rawJson);
@@ -32,5 +30,6 @@ export function getAdminDb() {
 
   return getFirestore();
 }
+
 
 
