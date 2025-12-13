@@ -25,6 +25,27 @@
 └──────────┘      └──────────┘      └──────────┘
 ```
 
+## ✅ TL;DR — як деплоїти “правильно і безпечно”
+
+### URLs
+- **TEST:** https://webchecklist-test-346608061984.us-central1.run.app
+- **PROD:** https://webchecklist-346608061984.us-central1.run.app
+
+### Рекомендований шлях (через GitHub Actions)
+1. **Пуш/мерж в `dev`** → автодеплой на **TEST** (workflow `Deploy (TEST)`).
+2. Перевір на TEST:
+   - відкрити сайт
+   - прогнати 1–2 URL (наприклад `snoopgame.com`)
+   - перевірити, що генерується CSV і працюють кнопки Download
+3. **PR `dev → main`** (code review).
+4. **Merge в `main`** → автодеплой на **PROD** (workflow `Deploy (PROD)`).
+   - Для максимальної безпеки увімкни GitHub Environment `production` з Required reviewers (тоді буде manual approval).
+
+### Якщо GitHub Actions тимчасово не працює (fallback)
+- Деплой руками скриптами:
+  - `./deploy-test.sh`
+  - `./deploy-prod.sh`
+
 ### 1️⃣ Розробка локально
 
 ```bash
@@ -156,6 +177,11 @@ GitHub Secrets, які мають бути додані в репозиторі�
 - `GCP_WIF_PROVIDER` — resource name провайдера WIF (OIDC)
 - `GCP_SA_EMAIL` — email service account (наприклад `github-deployer@...`)
 - `OPENAI_API_KEY` — ключ OpenAI (буде переданий в Cloud Run як env var)
+
+### GitHub Environments (рекомендовано)
+Створи environments:
+- `test` — без approval
+- `production` — з Required reviewers (manual approval на прод деплой)
 
 ### Примітка
 - Локальні скрипти `deploy-*.sh` читають `OPENAI_API_KEY` з `web/.env.local`.
