@@ -15,11 +15,26 @@ export async function POST(req: NextRequest) {
 
   const stripe = getStripe();
 
-  const basePrice = process.env.STRIPE_PRICE_BASE;
+  const planParam =
+    req.nextUrl.searchParams.get("plan") ||
+    ((await req.json().catch(() => ({}))) as { plan?: string }).plan ||
+    "";
+  const plan = planParam === "starter" || planParam === "pro" ? planParam : null;
+  if (!plan) {
+    return NextResponse.json(
+      { error: "Missing or invalid plan (starter|pro)" },
+      { status: 400 },
+    );
+  }
+
+  const starterPrice = process.env.STRIPE_PRICE_STARTER;
+  const proPrice = process.env.STRIPE_PRICE_PRO;
   const meteredPrice = process.env.STRIPE_PRICE_METERED;
+  const basePrice = plan === "starter" ? starterPrice : proPrice;
+
   if (!basePrice || !meteredPrice) {
     return NextResponse.json(
-      { error: "Stripe prices are not configured (STRIPE_PRICE_BASE/STRIPE_PRICE_METERED)" },
+      { error: "Stripe prices are not configured (STRIPE_PRICE_STARTER/PRO + STRIPE_PRICE_METERED)" },
       { status: 500 },
     );
   }
@@ -36,9 +51,9 @@ export async function POST(req: NextRequest) {
     success_url: `${origin}/app?checkout=success`,
     cancel_url: `${origin}/app?checkout=cancel`,
     subscription_data: {
-      metadata: { userId },
+      metadata: { userId, plan },
     },
-    metadata: { userId },
+    metadata: { userId, plan },
     line_items: [
       { price: basePrice, quantity: 1 },
       { price: meteredPrice, quantity: 1 },

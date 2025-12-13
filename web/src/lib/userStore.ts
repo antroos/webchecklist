@@ -2,6 +2,8 @@ import { FieldValue } from "firebase-admin/firestore";
 
 import { getAdminDb } from "./firebaseAdmin";
 
+export type UserPlan = "starter" | "pro" | null;
+
 export type UserDoc = {
   email?: string | null;
   name?: string | null;
@@ -12,6 +14,18 @@ export type UserDoc = {
   stripeSubscriptionId?: string | null;
   stripeSubscriptionStatus?: string | null;
   stripeMeteredItemId?: string | null;
+
+  // Billing (app-side included quota + overage cap)
+  plan?: UserPlan;
+  includedMonthlyLimit?: number; // 50/200 depending on plan
+  periodStart?: FirebaseFirestore.Timestamp | null;
+  periodEnd?: FirebaseFirestore.Timestamp | null;
+  periodIncludedUsed?: number;
+  periodOverageUsed?: number;
+  periodOverageReserved?: number;
+  overageLimitCents?: number; // default 1000 ($10)
+  overageUnlockedUntilPeriodEnd?: boolean;
+  overageUnlockConfirmedAt?: FirebaseFirestore.FieldValue | FirebaseFirestore.Timestamp | null;
 };
 
 export async function ensureUserExists(params: {
@@ -35,6 +49,17 @@ export async function ensureUserExists(params: {
         stripeSubscriptionId: null,
         stripeSubscriptionStatus: null,
         stripeMeteredItemId: null,
+
+        plan: null,
+        includedMonthlyLimit: 0,
+        periodStart: null,
+        periodEnd: null,
+        periodIncludedUsed: 0,
+        periodOverageUsed: 0,
+        periodOverageReserved: 0,
+        overageLimitCents: 1000,
+        overageUnlockedUntilPeriodEnd: false,
+        overageUnlockConfirmedAt: null,
       } satisfies UserDoc);
       return;
     }
@@ -42,6 +67,14 @@ export async function ensureUserExists(params: {
     tx.update(ref, {
       email: params.email ?? snap.get("email") ?? null,
       name: params.name ?? snap.get("name") ?? null,
+      // backfill new fields if missing (keeps old users compatible)
+      plan: (snap.get("plan") ?? null) as UserPlan,
+      includedMonthlyLimit: snap.get("includedMonthlyLimit") ?? 0,
+      periodIncludedUsed: snap.get("periodIncludedUsed") ?? 0,
+      periodOverageUsed: snap.get("periodOverageUsed") ?? 0,
+      periodOverageReserved: snap.get("periodOverageReserved") ?? 0,
+      overageLimitCents: snap.get("overageLimitCents") ?? 1000,
+      overageUnlockedUntilPeriodEnd: snap.get("overageUnlockedUntilPeriodEnd") ?? false,
       updatedAt: FieldValue.serverTimestamp(),
     } satisfies Partial<UserDoc>);
   });

@@ -3,7 +3,7 @@ import { spawn } from "child_process";
 import path from "path";
 import OpenAI from "openai";
 import { auth } from "@/auth";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { getStripe } from "@/lib/stripe";
 
@@ -107,8 +107,10 @@ export async function POST(req: NextRequest) {
   const analysisRefs = urls.map((_, idx) =>
     db.collection("analyses").doc(`${userId}_${requestId}_${idx}`),
   );
-  let billingMode: "free" | "metered" = "free";
+  type BillingKind = "free" | "included" | "overage";
+  const billingByIndex: BillingKind[] = [];
   let stripeMeteredItemId: string | null = null;
+  const overageUnitPriceCents = 40; // $0.40 per analysis
 
   try {
     await db.runTransaction(async (tx) => {
@@ -118,22 +120,104 @@ export async function POST(req: NextRequest) {
         typeof creditsRaw === "number" ? creditsRaw : 0;
       const subStatus = userSnap.get("stripeSubscriptionStatus");
       const meteredItemId = userSnap.get("stripeMeteredItemId");
+      const plan = (userSnap.get("plan") as string | null) ?? null;
+      const includedMonthlyLimitRaw = userSnap.get("includedMonthlyLimit");
+      const includedMonthlyLimit =
+        typeof includedMonthlyLimitRaw === "number"
+          ? includedMonthlyLimitRaw
+          : plan === "starter"
+            ? 50
+            : plan === "pro"
+              ? 200
+              : 0;
+      const periodIncludedUsedRaw = userSnap.get("periodIncludedUsed");
+      const periodIncludedUsed =
+        typeof periodIncludedUsedRaw === "number" ? periodIncludedUsedRaw : 0;
+      const periodOverageUsedRaw = userSnap.get("periodOverageUsed");
+      const periodOverageUsed =
+        typeof periodOverageUsedRaw === "number" ? periodOverageUsedRaw : 0;
+      const periodOverageReservedRaw = userSnap.get("periodOverageReserved");
+      const periodOverageReserved =
+        typeof periodOverageReservedRaw === "number" ? periodOverageReservedRaw : 0;
+      const overageLimitCentsRaw = userSnap.get("overageLimitCents");
+      const overageLimitCents =
+        typeof overageLimitCentsRaw === "number" ? overageLimitCentsRaw : 1000;
+      const overageUnlockedUntilPeriodEndRaw = userSnap.get("overageUnlockedUntilPeriodEnd");
+      const overageUnlockedUntilPeriodEnd =
+        typeof overageUnlockedUntilPeriodEndRaw === "boolean"
+          ? overageUnlockedUntilPeriodEndRaw
+          : false;
+      const periodEndRaw = userSnap.get("periodEnd") as Timestamp | null | undefined;
+      const periodEnd = periodEndRaw ?? null;
 
       const hasActiveSub =
         typeof subStatus === "string" &&
         (subStatus === "active" || subStatus === "trialing");
       const hasMeteredItem = typeof meteredItemId === "string" && meteredItemId;
 
-      if (credits >= urls.length) {
-        billingMode = "free";
-      } else if (hasActiveSub && hasMeteredItem) {
-        billingMode = "metered";
-        stripeMeteredItemId = meteredItemId;
-      } else {
-        const err = new Error("PAYMENT_REQUIRED");
-        // @ts-expect-error attach code
-        err.code = "PAYMENT_REQUIRED";
-        throw err;
+      // If we are past the period end, locally reset counters (Stripe webhook should also update).
+      const nowMs = Date.now();
+      if (periodEnd && nowMs > periodEnd.toMillis() + 60_000) {
+        tx.set(
+          userRef,
+          {
+            periodIncludedUsed: 0,
+            periodOverageUsed: 0,
+            periodOverageReserved: 0,
+            overageUnlockedUntilPeriodEnd: false,
+            overageUnlockConfirmedAt: null,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
+
+      // Allocate billing per URL: free credits first, then included quota, then overage.
+      const freeCount = Math.min(credits, urls.length);
+      const remainingAfterFree = urls.length - freeCount;
+
+      let includedCount = 0;
+      let overageCount = 0;
+
+      if (remainingAfterFree > 0) {
+        if (hasActiveSub && hasMeteredItem) {
+          stripeMeteredItemId = meteredItemId;
+          const remainingIncluded = Math.max(0, includedMonthlyLimit - periodIncludedUsed);
+          includedCount = Math.min(remainingIncluded, remainingAfterFree);
+          overageCount = remainingAfterFree - includedCount;
+
+          if (overageCount > 0 && !overageUnlockedUntilPeriodEnd) {
+            const projectedOverageCents =
+              (periodOverageUsed + periodOverageReserved + overageCount) * overageUnitPriceCents;
+            if (projectedOverageCents > overageLimitCents) {
+              const err = new Error("OVERAGE_CAP");
+              // @ts-expect-error attach fields
+              err.code = "OVERAGE_CAP";
+              // @ts-expect-error attach fields
+              err.details = {
+                overageLimitCents,
+                projectedOverageCents,
+                overageUnitPriceCents,
+                overageUnitsRequested: overageCount,
+                unlocked: false,
+              };
+              throw err;
+            }
+          }
+        } else {
+          const err = new Error("PAYMENT_REQUIRED");
+          // @ts-expect-error attach code
+          err.code = "PAYMENT_REQUIRED";
+          throw err;
+        }
+      }
+
+      // Build billingByIndex in order.
+      billingByIndex.length = 0;
+      for (let i = 0; i < urls.length; i++) {
+        if (i < freeCount) billingByIndex.push("free");
+        else if (i < freeCount + includedCount) billingByIndex.push("included");
+        else billingByIndex.push("overage");
       }
 
       // Create analysis docs (idempotency for this requestId) and decrement credits once.
@@ -145,7 +229,7 @@ export async function POST(req: NextRequest) {
             url: urls[idx],
             requestId,
             status: "processing",
-            billingMode,
+            billingMode: billingByIndex[idx],
             createdAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
           },
@@ -159,16 +243,43 @@ export async function POST(req: NextRequest) {
         { merge: true },
       );
 
-      if (billingMode === "free") {
+      if (freeCount > 0) {
         tx.update(userRef, {
-          freeCreditsRemaining: credits - urls.length,
+          freeCreditsRemaining: credits - freeCount,
           updatedAt: FieldValue.serverTimestamp(),
         });
+      }
+      if (includedCount > 0) {
+        tx.set(
+          userRef,
+          {
+            periodIncludedUsed: periodIncludedUsed + includedCount,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
+      if (overageCount > 0) {
+        tx.set(
+          userRef,
+          {
+            periodOverageReserved: periodOverageReserved + overageCount,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
       }
     });
   } catch (e) {
     const code =
       e && typeof e === "object" && "code" in e ? (e as any).code : undefined;
+    if (code === "OVERAGE_CAP") {
+      const details = (e as any).details ?? {};
+      return new Response(JSON.stringify({ error: "OVERAGE_CAP", ...details }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     if (code === "PAYMENT_REQUIRED" || (e as Error)?.message === "PAYMENT_REQUIRED") {
       return new Response("Payment required. Please upgrade to continue.", {
         status: 402,
@@ -178,12 +289,8 @@ export async function POST(req: NextRequest) {
     return new Response(`Failed to reserve credits: ${msg}`, { status: 500 });
   }
 
-  // NOTE: billingMode is mutated inside the transaction callback. Some TS/Next build setups
-  // can over-narrow it to "free" at this point; keep it widened explicitly.
-  const billingModeFinal = billingMode as "free" | "metered";
-
   const encoder = new TextEncoder();
-  const stripe = billingModeFinal === "metered" ? getStripe() : null;
+  const stripe = stripeMeteredItemId ? getStripe() : null;
   
   const stream = new ReadableStream({
     async start(controller) {
@@ -233,6 +340,7 @@ export async function POST(req: NextRequest) {
         for (let index = 0; index < urls.length; index++) {
           const url = urls[index];
           const analysisRef = analysisRefs[index];
+          const billingKind = billingByIndex[index] ?? "free";
 
           sendLog(`🚀 [${index + 1}/${urls.length}] Preparing to launch browser for ${url}...`);
 
@@ -333,7 +441,7 @@ export async function POST(req: NextRequest) {
             sendLog(`✅ Checklist generated successfully for ${url}`);
 
             let stripeUsageRecordId: string | null = null;
-            if (billingModeFinal === "metered" && stripe && stripeMeteredItemId) {
+            if (billingKind === "overage" && stripe && stripeMeteredItemId) {
               try {
                 const usage = await stripe.rawRequest(
                   "post",
@@ -349,9 +457,35 @@ export async function POST(req: NextRequest) {
                 );
                 stripeUsageRecordId =
                   (usage as any)?.id ?? (usage as any)?.data?.id ?? null;
+
+                // Convert reservation → billed usage
+                try {
+                  await userRef.set(
+                    {
+                      periodOverageUsed: FieldValue.increment(1),
+                      periodOverageReserved: FieldValue.increment(-1),
+                      updatedAt: FieldValue.serverTimestamp(),
+                    },
+                    { merge: true },
+                  );
+                } catch {
+                  // non-fatal
+                }
               } catch (err) {
                 // If billing fails, treat as error (avoid giving free results without charging).
                 const msg = err instanceof Error ? err.message : "Stripe usage record error";
+                // Release reservation if Stripe billing failed
+                try {
+                  await userRef.set(
+                    {
+                      periodOverageReserved: FieldValue.increment(-1),
+                      updatedAt: FieldValue.serverTimestamp(),
+                    },
+                    { merge: true },
+                  );
+                } catch {
+                  // ignore
+                }
                 throw new Error(`Billing failed: ${msg}`);
               }
             }
@@ -389,6 +523,20 @@ export async function POST(req: NextRequest) {
                 : "Unexpected error during page analysis";
             sendLog(`❌ Failed to process ${url}: ${message}`);
             const fullMessage = `Failed to process ${url}: ${message}`;
+            // Release reservation for overage attempts that failed before billing.
+            if (billingKind === "overage") {
+              try {
+                await userRef.set(
+                  {
+                    periodOverageReserved: FieldValue.increment(-1),
+                    updatedAt: FieldValue.serverTimestamp(),
+                  },
+                  { merge: true },
+                );
+              } catch {
+                // ignore
+              }
+            }
             try {
               await analysisRef.set(
                 {

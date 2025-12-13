@@ -6,12 +6,13 @@
 
 ### 🧪 TEST (Staging)
 - **Service:** `webchecklist-test`
-- **URL:** https://webchecklist-test-346608061984.us-central1.run.app
+- **URL:** (може змінюватись, якщо немає кастомного домену) — див. актуальний через:
+  - `gcloud run services describe webchecklist-test --project webtest-479911 --region us-central1 --format='value(status.url)'`
 - **Призначення:** Тестування нових фіч перед prod
 
 ### 🚀 PRODUCTION
 - **Service:** `webchecklist`
-- **URL:** https://webchecklist-346608061984.us-central1.run.app
+- **URL:** https://webmorpher.com
 - **Призначення:** Live сервіс для користувачів
 
 ---
@@ -28,8 +29,8 @@
 ## ✅ TL;DR — як деплоїти “правильно і безпечно”
 
 ### URLs
-- **TEST:** https://webchecklist-test-346608061984.us-central1.run.app
-- **PROD:** https://webchecklist-346608061984.us-central1.run.app
+- **TEST:** див. `gcloud run services describe webchecklist-test ... value(status.url)`
+- **PROD:** https://webmorpher.com
 
 ### Рекомендований шлях (через GitHub Actions)
 1. **Пуш/мерж в `dev`** → автодеплой на **TEST** (workflow `Deploy (TEST)`).
@@ -67,7 +68,7 @@ npm run dev
 ```
 
 Після деплою:
-- ✅ Перевір https://webchecklist-test-*.run.app
+- ✅ Перевір TEST URL (див. `gcloud run services describe webchecklist-test ... value(status.url)`)
 - ✅ Протестуй всі нові фічі
 - ✅ Переконайся, що логи працюють
 - ✅ Перевір різні URL (snoopgame.com, langfuse.com, тощо)
@@ -166,8 +167,9 @@ gcloud run logs tail webchecklist --region=us-central1
 - `NEXTAUTH_URL` — має збігатися з доменом, який бачить користувач (наприклад `https://webmorpher.com`)
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_PRICE_BASE` — monthly base subscription price id
-- `STRIPE_PRICE_METERED` — metered price id (1 unit = 1 analysis)
+- `STRIPE_PRICE_STARTER` — Starter $9/mo price id (fixed recurring)
+- `STRIPE_PRICE_PRO` — Pro $29/mo price id (fixed recurring)
+- `STRIPE_PRICE_METERED` — metered overage price id ($0.40 per analysis)
 - `FIREBASE_SERVICE_ACCOUNT_BASE64` (optional) — якщо не хочеш покладатися на Cloud Run service account (ADC)
 
 Webhook endpoint:
@@ -197,7 +199,8 @@ GitHub Secrets, які мають бути додані в репозиторі�
  - `NEXTAUTH_URL`
  - `STRIPE_SECRET_KEY`
  - `STRIPE_WEBHOOK_SECRET`
- - `STRIPE_PRICE_BASE`
+ - `STRIPE_PRICE_STARTER`
+ - `STRIPE_PRICE_PRO`
  - `STRIPE_PRICE_METERED`
 
 ### GitHub Environments (рекомендовано)
@@ -239,6 +242,22 @@ GitHub Secrets, які мають бути додані в репозиторі�
 ---
 
 ## 🚨 Troubleshooting
+
+### NextAuth: “There is a problem with the server configuration…”
+Зазвичай це означає, що на Cloud Run не вистачає:
+- `NEXTAUTH_URL`
+- `NEXTAUTH_SECRET`
+
+Перевірка:
+```bash
+gcloud run services describe webchecklist --project webtest-479911 --region us-central1 \
+  --format='json(spec.template.spec.containers[0].env)'
+```
+
+Фікс: додати secrets у GitHub Environment (`test` / `production`) → зробити redeploy.
+
+### Google login: `PERMISSION_DENIED ... Cloud Firestore API ... disabled`
+Фікс: увімкнути Firestore API, створити `(default)` Firestore DB та дати runtime service account роль `roles/datastore.user`.
 
 ### Якщо TEST не працює:
 1. Перевір логи: `gcloud run logs read webchecklist-test`

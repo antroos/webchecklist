@@ -4,8 +4,8 @@
 
 | Environment | Service Name | URL | Usage |
 |-------------|--------------|-----|-------|
-| **TEST** 🧪 | `webchecklist-test` | https://webchecklist-test-346608061984.us-central1.run.app | Testing new features |
-| **PROD** 🚀 | `webchecklist` | https://webchecklist-346608061984.us-central1.run.app | Live production |
+| **TEST** 🧪 | `webchecklist-test` | (див. `gcloud run services describe ... value(status.url)`) | Testing new features |
+| **PROD** 🚀 | `webchecklist` | https://webmorpher.com | Live production |
 
 ---
 
@@ -19,7 +19,8 @@ cd web && npm run dev
 # push/merge в dev → Deploy (TEST)
 
 # 3. Тестування на TEST середовищі
-open https://webchecklist-test-346608061984.us-central1.run.app
+# Дивись актуальний URL:
+gcloud run services describe webchecklist-test --project webtest-479911 --region us-central1 --format='value(status.url)'
 
 # 4. Якщо все ОК → деплой на PROD (рекомендовано — через GitHub Actions)
 # PR dev→main, merge main → Deploy (PROD)
@@ -31,14 +32,14 @@ open https://webchecklist-test-346608061984.us-central1.run.app
 
 ### TEST Environment
 - **Status:** ✅ Active
-- **Revision:** `webchecklist-test-00001-fcl`
-- **Last Deploy:** Just now
+- **Revision:** (див. `gcloud run services describe webchecklist-test ... value(status.latestReadyRevisionName)`)
+- **Last Deploy:** (див. GitHub Actions `Deploy (TEST)`)
 - **Purpose:** Safe testing ground for new features
 
 ### PROD Environment  
 - **Status:** ✅ Active
-- **Revision:** `webchecklist-00006-qst`
-- **Last Deploy:** Previous (stable)
+- **Revision:** (див. `gcloud run services describe webchecklist ... value(status.latestReadyRevisionName)`)
+- **Last Deploy:** (див. GitHub Actions `Deploy (PROD)`)
 - **Purpose:** Live service for end users
 
 ---
@@ -85,6 +86,8 @@ Want to automate this further?
 - Pull request required for `dev` → `main`
 
 Let me know if you want me to set this up! 🚀
+
+Already set up: see `DEPLOYMENT.md` and `RUNBOOK.md`.
 
 ---
 
