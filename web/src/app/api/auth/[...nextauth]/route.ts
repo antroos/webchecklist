@@ -5,7 +5,7 @@ import { authOptions } from "@/auth";
 
 const handler = NextAuth(authOptions);
 
-function logAuth(req: NextRequest, phase: string, ctx: unknown) {
+function logAuth(req: NextRequest, phase: string, params: unknown) {
   try {
     const cookie = req.headers.get("cookie") ?? "";
     const cookieKeys = cookie
@@ -21,7 +21,7 @@ function logAuth(req: NextRequest, phase: string, ctx: unknown) {
       host: req.headers.get("host"),
       forwardedHost: req.headers.get("x-forwarded-host"),
       forwardedProto: req.headers.get("x-forwarded-proto"),
-      params: (ctx as any)?.params ?? null,
+      params: params ?? null,
       refererHost: (() => {
         const ref = req.headers.get("referer");
         try {
@@ -48,13 +48,23 @@ function logAuth(req: NextRequest, phase: string, ctx: unknown) {
   }
 }
 
-export function GET(req: NextRequest, ctx: unknown) {
-  logAuth(req, "GET", ctx);
+async function resolveParams(ctx: unknown): Promise<unknown> {
+  const maybe = (ctx as any)?.params;
+  if (maybe && typeof maybe.then === "function") {
+    return await maybe;
+  }
+  return maybe ?? null;
+}
+
+export async function GET(req: NextRequest, ctx: unknown) {
+  const params = await resolveParams(ctx);
+  logAuth(req, "GET", params);
   return (handler as any)(req, ctx);
 }
 
-export function POST(req: NextRequest, ctx: unknown) {
-  logAuth(req, "POST", ctx);
+export async function POST(req: NextRequest, ctx: unknown) {
+  const params = await resolveParams(ctx);
+  logAuth(req, "POST", params);
   return (handler as any)(req, ctx);
 }
 

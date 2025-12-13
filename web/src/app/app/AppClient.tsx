@@ -91,42 +91,61 @@ export default function AppClient() {
           // ignore parse errors
         }
         // #region agent log
-        fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: "debug-session",
-            runId: "pre-fix",
-            hypothesisId: "H1",
-            location: "web/src/app/app/AppClient.tsx:session-probe",
-            message: "Probed /api/auth/session on app mount",
-            data: {
-              status: res.status,
-              origin: typeof window !== "undefined" ? window.location.origin : null,
-              host: typeof window !== "undefined" ? window.location.host : null,
-              loggedIn,
-              hasUser,
-              rawLen: text.length,
+        if (
+          typeof window !== "undefined" &&
+          (window.location.hostname === "localhost" ||
+            window.location.hostname === "127.0.0.1")
+        ) {
+          fetch(
+            "http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sessionId: "debug-session",
+                runId: "pre-fix",
+                hypothesisId: "H1",
+                location: "web/src/app/app/AppClient.tsx:session-probe",
+                message: "Probed /api/auth/session on app mount",
+                data: {
+                  status: res.status,
+                  origin:
+                    typeof window !== "undefined" ? window.location.origin : null,
+                  host: typeof window !== "undefined" ? window.location.host : null,
+                  loggedIn,
+                  hasUser,
+                  rawLen: text.length,
+                },
+                timestamp: Date.now(),
+              }),
             },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
+          ).catch(() => {});
+        }
         // #endregion agent log
       } catch (e) {
         // #region agent log
-        fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: "debug-session",
-            runId: "pre-fix",
-            hypothesisId: "H2",
-            location: "web/src/app/app/AppClient.tsx:session-probe-error",
-            message: "Failed to probe /api/auth/session",
-            data: { error: e instanceof Error ? e.message : String(e) },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
+        if (
+          typeof window !== "undefined" &&
+          (window.location.hostname === "localhost" ||
+            window.location.hostname === "127.0.0.1")
+        ) {
+          fetch(
+            "http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sessionId: "debug-session",
+                runId: "pre-fix",
+                hypothesisId: "H2",
+                location: "web/src/app/app/AppClient.tsx:session-probe-error",
+                message: "Failed to probe /api/auth/session",
+                data: { error: e instanceof Error ? e.message : String(e) },
+                timestamp: Date.now(),
+              }),
+            },
+          ).catch(() => {});
+        }
         // #endregion agent log
       }
     })();

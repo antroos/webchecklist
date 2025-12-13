@@ -5,25 +5,32 @@ import { signIn } from "next-auth/react";
 
 export default function SignInClient({ callbackUrl }: { callbackUrl: string }) {
   useEffect(() => {
+    const canIngest =
+      typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1");
+
     // #region agent log
-    fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: "debug-session",
-        runId: "pre-fix",
-        hypothesisId: "H1",
-        location: "web/src/app/auth/signin/SignInClient.tsx:mount",
-        message: "SignInClient mounted",
-        data: {
-          href: typeof window !== "undefined" ? window.location.href : null,
-          origin: typeof window !== "undefined" ? window.location.origin : null,
-          host: typeof window !== "undefined" ? window.location.host : null,
-          callbackUrl,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
+    if (canIngest) {
+      fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "debug-session",
+          runId: "pre-fix",
+          hypothesisId: "H1",
+          location: "web/src/app/auth/signin/SignInClient.tsx:mount",
+          message: "SignInClient mounted",
+          data: {
+            href: typeof window !== "undefined" ? window.location.href : null,
+            origin: typeof window !== "undefined" ? window.location.origin : null,
+            host: typeof window !== "undefined" ? window.location.host : null,
+            callbackUrl,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
     // #endregion agent log
 
     void (async () => {
@@ -45,42 +52,46 @@ export default function SignInClient({ callbackUrl }: { callbackUrl: string }) {
         }
 
         // #region agent log
-        fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: "debug-session",
-            runId: "pre-fix",
-            hypothesisId: "H1",
-            location: "web/src/app/auth/signin/SignInClient.tsx:providers",
-            message: "Fetched /api/auth/providers",
-            data: {
-              status: res.status,
-              origin: typeof window !== "undefined" ? window.location.origin : null,
-              host: typeof window !== "undefined" ? window.location.host : null,
-              googleSigninUrlHost,
-              googleCallbackUrlHost,
-              rawLen: text.length,
-            },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
+        if (canIngest) {
+          fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId: "debug-session",
+              runId: "pre-fix",
+              hypothesisId: "H1",
+              location: "web/src/app/auth/signin/SignInClient.tsx:providers",
+              message: "Fetched /api/auth/providers",
+              data: {
+                status: res.status,
+                origin: typeof window !== "undefined" ? window.location.origin : null,
+                host: typeof window !== "undefined" ? window.location.host : null,
+                googleSigninUrlHost,
+                googleCallbackUrlHost,
+                rawLen: text.length,
+              },
+              timestamp: Date.now(),
+            }),
+          }).catch(() => {});
+        }
         // #endregion agent log
       } catch (e) {
         // #region agent log
-        fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: "debug-session",
-            runId: "pre-fix",
-            hypothesisId: "H2",
-            location: "web/src/app/auth/signin/SignInClient.tsx:providers-error",
-            message: "Failed to fetch /api/auth/providers",
-            data: { error: e instanceof Error ? e.message : String(e) },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
+        if (canIngest) {
+          fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId: "debug-session",
+              runId: "pre-fix",
+              hypothesisId: "H2",
+              location: "web/src/app/auth/signin/SignInClient.tsx:providers-error",
+              message: "Failed to fetch /api/auth/providers",
+              data: { error: e instanceof Error ? e.message : String(e) },
+              timestamp: Date.now(),
+            }),
+          }).catch(() => {});
+        }
         // #endregion agent log
       }
     })();
@@ -102,24 +113,40 @@ export default function SignInClient({ callbackUrl }: { callbackUrl: string }) {
         <button
           onClick={() => {
             // #region agent log
-            fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                sessionId: "debug-session",
-                runId: "pre-fix",
-                hypothesisId: "H1",
-                location: "web/src/app/auth/signin/SignInClient.tsx:click",
-                message: "Clicked Continue with Google",
-                data: {
-                  href: typeof window !== "undefined" ? window.location.href : null,
-                  origin: typeof window !== "undefined" ? window.location.origin : null,
-                  host: typeof window !== "undefined" ? window.location.host : null,
-                  callbackUrl,
+            if (
+              typeof window !== "undefined" &&
+              (window.location.hostname === "localhost" ||
+                window.location.hostname === "127.0.0.1")
+            ) {
+              fetch(
+                "http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    sessionId: "debug-session",
+                    runId: "pre-fix",
+                    hypothesisId: "H1",
+                    location: "web/src/app/auth/signin/SignInClient.tsx:click",
+                    message: "Clicked Continue with Google",
+                    data: {
+                      href:
+                        typeof window !== "undefined"
+                          ? window.location.href
+                          : null,
+                      origin:
+                        typeof window !== "undefined"
+                          ? window.location.origin
+                          : null,
+                      host:
+                        typeof window !== "undefined" ? window.location.host : null,
+                      callbackUrl,
+                    },
+                    timestamp: Date.now(),
+                  }),
                 },
-                timestamp: Date.now(),
-              }),
-            }).catch(() => {});
+              ).catch(() => {});
+            }
             // #endregion agent log
 
             void signIn("google", { callbackUrl });
