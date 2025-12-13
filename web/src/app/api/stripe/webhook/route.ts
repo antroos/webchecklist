@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import Stripe from "stripe";
 
 import { getAdminDb } from "@/lib/firebaseAdmin";
@@ -24,9 +24,41 @@ async function upsertSubscriptionForUser(params: {
   const ref = db.collection("users").doc(params.userId);
 
   const sub = params.subscription;
-  const meteredItem = sub
-    ? sub.items.data.find((i) => i.price?.recurring?.usage_type === "metered")
-    : undefined;
+  const items = sub?.items?.data ?? [];
+  const meteredItem = items.find((i) => i.price?.recurring?.usage_type === "metered");
+  const fixedItem = items.find((i) => i.price?.recurring?.usage_type !== "metered");
+
+  const starterPrice = process.env.STRIPE_PRICE_STARTER;
+  const proPrice = process.env.STRIPE_PRICE_PRO;
+
+  const fixedPriceId = fixedItem?.price?.id ?? null;
+  const plan =
+    fixedPriceId && starterPrice && fixedPriceId === starterPrice
+      ? "starter"
+      : fixedPriceId && proPrice && fixedPriceId === proPrice
+        ? "pro"
+        : null;
+  const includedMonthlyLimit = plan === "starter" ? 50 : plan === "pro" ? 200 : 0;
+
+  // Stripe types in this repo's pinned SDK omit some billing period fields; read them defensively.
+  const subAny = sub as any;
+  const periodStart =
+    typeof subAny?.current_period_start === "number"
+      ? Timestamp.fromMillis(subAny.current_period_start * 1000)
+      : null;
+  const periodEnd =
+    typeof subAny?.current_period_end === "number"
+      ? Timestamp.fromMillis(subAny.current_period_end * 1000)
+      : null;
+
+  // If billing period changed, reset counters and overage unlock.
+  const existing = await ref.get().catch(() => null);
+  const existingPeriodEnd = existing?.exists ? (existing.get("periodEnd") as Timestamp | null) : null;
+  const subscriptionRemoved = !sub;
+  const periodChanged =
+    Boolean(
+      periodEnd && (!existingPeriodEnd || existingPeriodEnd.toMillis() !== periodEnd.toMillis()),
+    );
 
   await ref.set(
     {
@@ -34,6 +66,19 @@ async function upsertSubscriptionForUser(params: {
       stripeSubscriptionId: sub?.id ?? null,
       stripeSubscriptionStatus: sub?.status ?? null,
       stripeMeteredItemId: meteredItem?.id ?? null,
+      plan,
+      includedMonthlyLimit,
+      periodStart,
+      periodEnd,
+      ...(subscriptionRemoved || periodChanged
+        ? {
+            periodIncludedUsed: 0,
+            periodOverageUsed: 0,
+            periodOverageReserved: 0,
+            overageUnlockedUntilPeriodEnd: false,
+            overageUnlockConfirmedAt: null,
+          }
+        : {}),
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true },

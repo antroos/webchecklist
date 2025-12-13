@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 type ChatMessage = {
   id: string;
@@ -18,7 +19,21 @@ type SSEEvent =
   | { type: "result"; url: string; csv: string; raw: unknown }
   | { type: "error"; message: string };
 
+type OverageCapPayload = {
+  error: "OVERAGE_CAP";
+  overageLimitCents: number;
+  projectedOverageCents: number;
+  overageUnitPriceCents: number;
+  overageUnitsRequested: number;
+  unlocked: boolean;
+};
+
+function centsToDollars(cents: number) {
+  return Math.round(cents) / 100;
+}
+
 export default function AppClient() {
+  const router = useRouter();
   const [credits, setCredits] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -35,6 +50,8 @@ export default function AppClient() {
   const [abortController, setAbortController] =
     useState<AbortController | null>(null);
   const [needsUpgrade, setNeedsUpgrade] = useState(false);
+  const [overagePrompt, setOveragePrompt] = useState<OverageCapPayload | null>(null);
+  const [pendingMessages, setPendingMessages] = useState<ChatMessage[] | null>(null);
 
   const requestId = useMemo(() => {
     // One id per page load; used for idempotent credit reservation server-side.
@@ -67,6 +84,8 @@ export default function AppClient() {
 
     setError(null);
     setNeedsUpgrade(false);
+    setOveragePrompt(null);
+    setPendingMessages(null);
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -98,6 +117,15 @@ export default function AppClient() {
 
       if (!res.ok) {
         // Preserve old behavior, but surface the error text if possible.
+        if (res.status === 409) {
+          const data = (await res.json().catch(() => null)) as OverageCapPayload | null;
+          if (data && data.error === "OVERAGE_CAP") {
+            setOveragePrompt(data);
+            setPendingMessages(nextMessages);
+            return;
+          }
+        }
+
         const text = await res.text().catch(() => "");
         if (res.status === 402) {
           setNeedsUpgrade(true);
@@ -213,22 +241,104 @@ export default function AppClient() {
   }
 
   async function startCheckout() {
+    router.push("/app/billing");
+  }
+
+  async function confirmOverageAndRetry() {
+    if (!pendingMessages) return;
     setError(null);
+    setOveragePrompt(null);
     try {
-      const res = await fetch("/api/billing/checkout", { method: "POST" });
-      if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        throw new Error(`Checkout failed: HTTP ${res.status} ${t}`);
-      }
-      const data = (await res.json()) as { url?: string };
-      if (data.url) {
-        window.location.assign(data.url);
-      } else {
-        throw new Error("Checkout failed: missing redirect URL");
+      const unlock = await fetch("/api/billing/overage-unlock", { method: "POST" });
+      if (!unlock.ok) {
+        const t = await unlock.text().catch(() => "");
+        throw new Error(`Failed to unlock overage: HTTP ${unlock.status} ${t}`);
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Checkout error";
-      setError(msg);
+      setError(e instanceof Error ? e.message : "Failed to unlock overage");
+      return;
+    }
+
+    // Retry by reusing the last messages list.
+    setIsLoading(true);
+    const controller = new AbortController();
+    setAbortController(controller);
+    try {
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId,
+          messages: pendingMessages.map(({ role, content }) => ({ role, content })),
+        }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status}: ${res.statusText}${text ? ` — ${text}` : ""}`);
+      }
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) throw new Error("No response body");
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6);
+          try {
+            const event = JSON.parse(jsonStr) as SSEEvent;
+            if (event.type === "log") {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: `log-${Date.now()}-${Math.random()}`,
+                  role: "assistant",
+                  kind: "status",
+                  content: event.message,
+                },
+              ]);
+            } else if (event.type === "result") {
+              void refreshCredits();
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: `result-${Date.now()}`,
+                  role: "assistant",
+                  kind: "result",
+                  content: `Checklist for ${event.url}`,
+                  csv: event.csv,
+                  raw: event.raw,
+                },
+              ]);
+            } else if (event.type === "error") {
+              setError(event.message);
+              void refreshCredits();
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: `err-${Date.now()}`,
+                  role: "assistant",
+                  kind: "plain",
+                  content: event.message,
+                },
+              ]);
+            }
+          } catch (parseErr) {
+            console.warn("Failed to parse SSE event:", line, parseErr);
+          }
+        }
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Retry failed");
+    } finally {
+      setAbortController(null);
+      setIsLoading(false);
+      setPendingMessages(null);
     }
   }
 
@@ -354,7 +464,7 @@ export default function AppClient() {
       <div className="m-auto flex h-[90vh] w-full max-w-5xl flex-col rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 shadow-[var(--shadow)]">
         <header className="mb-3 flex items-center justify-between gap-3 border-b border-[color:rgba(15,23,42,0.08)] pb-2">
           <div>
-            <h1 className="text-lg font-semibold">WebTest</h1>
+            <h1 className="text-lg font-semibold">WebMorpher</h1>
             <p className="text-xs text-[color:rgba(11,18,32,0.72)]">
               Chat interface for opening real pages in a browser, analyzing
               structure and generating CSV test checklists.
@@ -402,6 +512,29 @@ export default function AppClient() {
                 className="h-8 rounded-lg bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-3 text-xs font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.22)] hover:brightness-[1.02]"
               >
                 Upgrade
+              </button>
+            </div>
+          )}
+
+          {overagePrompt && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-[color:rgba(251,191,36,0.30)] bg-[color:rgba(251,191,36,0.10)] px-3 py-2">
+              <div className="text-xs text-[color:rgba(11,18,32,0.82)]">
+                This request would exceed your overage limit of{" "}
+                <span className="font-semibold">
+                  ${centsToDollars(overagePrompt.overageLimitCents).toFixed(2)}
+                </span>{" "}
+                (projected{" "}
+                <span className="font-semibold">
+                  ${centsToDollars(overagePrompt.projectedOverageCents).toFixed(2)}
+                </span>
+                ). Continue and unlock overage until period end?
+              </div>
+              <button
+                type="button"
+                onClick={confirmOverageAndRetry}
+                className="h-8 rounded-lg bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-3 text-xs font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.22)] hover:brightness-[1.02]"
+              >
+                Continue
               </button>
             </div>
           )}

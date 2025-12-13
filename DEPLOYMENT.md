@@ -167,8 +167,9 @@ gcloud run logs tail webchecklist --region=us-central1
 - `NEXTAUTH_URL` — має збігатися з доменом, який бачить користувач (наприклад `https://webmorpher.com`)
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_PRICE_BASE` — monthly base subscription price id
-- `STRIPE_PRICE_METERED` — metered price id (1 unit = 1 analysis)
+- `STRIPE_PRICE_STARTER` — Starter $9/mo price id (fixed recurring)
+- `STRIPE_PRICE_PRO` — Pro $29/mo price id (fixed recurring)
+- `STRIPE_PRICE_METERED` — metered overage price id ($0.40 per analysis)
 - `FIREBASE_SERVICE_ACCOUNT_BASE64` (optional) — якщо не хочеш покладатися на Cloud Run service account (ADC)
 
 Webhook endpoint:
@@ -198,7 +199,8 @@ GitHub Secrets, які мають бути додані в репозиторі�
  - `NEXTAUTH_URL`
  - `STRIPE_SECRET_KEY`
  - `STRIPE_WEBHOOK_SECRET`
- - `STRIPE_PRICE_BASE`
+ - `STRIPE_PRICE_STARTER`
+ - `STRIPE_PRICE_PRO`
  - `STRIPE_PRICE_METERED`
 
 ### GitHub Environments (рекомендовано)
