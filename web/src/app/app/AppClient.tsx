@@ -460,120 +460,117 @@ export default function AppClient() {
   }
 
   return (
-    <div className="flex min-h-screen bg-[color:var(--bg)] text-[color:var(--text)]">
-      <div className="m-auto flex h-[90vh] w-full max-w-5xl flex-col rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 shadow-[var(--shadow)]">
-        <header className="mb-3 flex items-center justify-between gap-3 border-b border-[color:rgba(15,23,42,0.08)] pb-2">
-          <div>
-            <h1 className="text-lg font-semibold">WebMorpher</h1>
-            <p className="text-xs text-[color:rgba(11,18,32,0.72)]">
-              Chat interface for opening real pages in a browser, analyzing
-              structure and generating CSV test checklists.
-            </p>
+    <div className="flex h-full w-full min-w-0 flex-col rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 shadow-[var(--shadow)]">
+      <header className="mb-3 flex flex-wrap items-start justify-between gap-3 border-b border-[color:rgba(15,23,42,0.08)] pb-2">
+        <div className="min-w-0">
+          <h1 className="text-lg font-semibold">WebMorpher</h1>
+          <p className="text-xs text-[color:rgba(11,18,32,0.72)]">
+            Chat interface for opening real pages in a browser, analyzing
+            structure and generating CSV test checklists.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="rounded-full border border-[color:rgba(97,106,243,0.28)] bg-[color:rgba(97,106,243,0.12)] px-3 py-1 text-[11px] font-medium text-[color:rgba(11,18,32,0.84)]">
+            {credits === null ? "…" : `${credits} free left`}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="rounded-full border border-[color:rgba(97,106,243,0.28)] bg-[color:rgba(97,106,243,0.12)] px-3 py-1 text-[11px] font-medium text-[color:rgba(11,18,32,0.84)]">
-              {credits === null ? "…" : `${credits} free left`}
+          <button
+            onClick={() => signOut({ callbackUrl: "/" })}
+            className="rounded-full border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.85)] px-3 py-1 text-[11px] font-medium text-[color:rgba(11,18,32,0.84)] hover:bg-[color:rgba(255,255,255,0.95)]"
+          >
+            Sign out
+          </button>
+        </div>
+      </header>
+
+      <main className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+        <div className="flex-1 space-y-2 overflow-y-auto rounded-[var(--radius-sm)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)] p-3">
+          {messages.map((m) => renderMessage(m))}
+          {isLoading && (
+            <div className="flex justify-start">
+              <div className="inline-flex items-center gap-2 rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.8)] px-3 py-1.5 text-xs text-[color:rgba(11,18,32,0.72)]">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[color:var(--ok)]" />
+                Analyzing page and generating checklist...
+              </div>
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div className="rounded-lg border border-[color:rgba(239,68,68,0.25)] bg-[color:rgba(239,68,68,0.08)] px-3 py-1.5 text-xs text-[color:rgba(185,28,28,0.95)]">
+            {error}
+          </div>
+        )}
+        {needsUpgrade && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-[color:rgba(97,106,243,0.22)] bg-[color:rgba(97,106,243,0.08)] px-3 py-2">
+            <div className="text-xs text-[color:rgba(11,18,32,0.82)]">
+              You’ve used your 5 free analyses. Upgrade to continue.
             </div>
             <button
-              onClick={() => signOut({ callbackUrl: "/" })}
-              className="rounded-full border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.85)] px-3 py-1 text-[11px] font-medium text-[color:rgba(11,18,32,0.84)] hover:bg-[color:rgba(255,255,255,0.95)]"
+              type="button"
+              onClick={startCheckout}
+              className="h-8 rounded-lg bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-3 text-xs font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.22)] hover:brightness-[1.02]"
             >
-              Sign out
+              Upgrade
             </button>
           </div>
-        </header>
+        )}
 
-        <main className="flex flex-1 flex-col gap-3 overflow-hidden">
-          <div className="flex-1 space-y-2 overflow-y-auto rounded-[var(--radius-sm)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)] p-3">
-            {messages.map((m) => renderMessage(m))}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="inline-flex items-center gap-2 rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.8)] px-3 py-1.5 text-xs text-[color:rgba(11,18,32,0.72)]">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[color:var(--ok)]" />
-                  Analyzing page and generating checklist...
-                </div>
-              </div>
-            )}
+        {overagePrompt && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-[color:rgba(251,191,36,0.30)] bg-[color:rgba(251,191,36,0.10)] px-3 py-2">
+            <div className="text-xs text-[color:rgba(11,18,32,0.82)]">
+              This request would exceed your overage limit of{" "}
+              <span className="font-semibold">
+                ${centsToDollars(overagePrompt.overageLimitCents).toFixed(2)}
+              </span>{" "}
+              (projected{" "}
+              <span className="font-semibold">
+                ${centsToDollars(overagePrompt.projectedOverageCents).toFixed(2)}
+              </span>
+              ). Continue and unlock overage until period end?
+            </div>
+            <button
+              type="button"
+              onClick={confirmOverageAndRetry}
+              className="h-8 rounded-lg bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-3 text-xs font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.22)] hover:brightness-[1.02]"
+            >
+              Continue
+            </button>
           </div>
+        )}
 
-          {error && (
-            <div className="rounded-lg border border-[color:rgba(239,68,68,0.25)] bg-[color:rgba(239,68,68,0.08)] px-3 py-1.5 text-xs text-[color:rgba(185,28,28,0.95)]">
-              {error}
-            </div>
+        <form onSubmit={handleSubmit} className="mt-1 flex items-end gap-2">
+          <div className="min-w-0 flex-1">
+            <textarea
+              rows={2}
+              className="w-full resize-none rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.95)] px-3 py-2 text-sm text-[color:rgba(11,18,32,0.9)] outline-none ring-0 placeholder:text-[color:rgba(11,18,32,0.45)] focus:border-[color:rgba(97,106,243,0.55)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.14)]"
+              placeholder="Send a URL or instruction, e.g. “Проаналізуй snoopgame.com і зроби чекліст для всіх форм, кнопок і навігації”."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+            />
+            <p className="mt-1 text-[11px] text-[color:rgba(11,18,32,0.60)]">
+              Tip: you can just paste a domain like <code>snoopgame.com</code> – the
+              assistant will normalize it to https:// and open in browser.
+            </p>
+          </div>
+          {isLoading ? (
+            <button
+              type="button"
+              onClick={handleStop}
+              className="h-10 shrink-0 rounded-xl bg-[color:rgba(239,68,68,0.92)] px-4 text-sm font-medium text-white hover:bg-[color:rgba(239,68,68,0.82)]"
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!input.trim()}
+              className="h-10 shrink-0 rounded-xl bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-4 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.28)] hover:brightness-[1.02] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
+            >
+              Send
+            </button>
           )}
-          {needsUpgrade && (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-[color:rgba(97,106,243,0.22)] bg-[color:rgba(97,106,243,0.08)] px-3 py-2">
-              <div className="text-xs text-[color:rgba(11,18,32,0.82)]">
-                You’ve used your 5 free analyses. Upgrade to continue.
-              </div>
-              <button
-                type="button"
-                onClick={startCheckout}
-                className="h-8 rounded-lg bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-3 text-xs font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.22)] hover:brightness-[1.02]"
-              >
-                Upgrade
-              </button>
-            </div>
-          )}
-
-          {overagePrompt && (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-[color:rgba(251,191,36,0.30)] bg-[color:rgba(251,191,36,0.10)] px-3 py-2">
-              <div className="text-xs text-[color:rgba(11,18,32,0.82)]">
-                This request would exceed your overage limit of{" "}
-                <span className="font-semibold">
-                  ${centsToDollars(overagePrompt.overageLimitCents).toFixed(2)}
-                </span>{" "}
-                (projected{" "}
-                <span className="font-semibold">
-                  ${centsToDollars(overagePrompt.projectedOverageCents).toFixed(2)}
-                </span>
-                ). Continue and unlock overage until period end?
-              </div>
-              <button
-                type="button"
-                onClick={confirmOverageAndRetry}
-                className="h-8 rounded-lg bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-3 text-xs font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.22)] hover:brightness-[1.02]"
-              >
-                Continue
-              </button>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="mt-1 flex items-end gap-2">
-            <div className="flex-1">
-              <textarea
-                rows={2}
-                className="w-full resize-none rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.95)] px-3 py-2 text-sm text-[color:rgba(11,18,32,0.9)] outline-none ring-0 placeholder:text-[color:rgba(11,18,32,0.45)] focus:border-[color:rgba(97,106,243,0.55)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.14)]"
-                placeholder="Send a URL or instruction, e.g. “Проаналізуй snoopgame.com і зроби чекліст для всіх форм, кнопок і навігації”."
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-              />
-              <p className="mt-1 text-[11px] text-[color:rgba(11,18,32,0.60)]">
-                Tip: you can just paste a domain like <code>snoopgame.com</code>{" "}
-                – the assistant will normalize it to https:// and open in
-                browser.
-              </p>
-            </div>
-            {isLoading ? (
-              <button
-                type="button"
-                onClick={handleStop}
-                className="h-10 rounded-xl bg-[color:rgba(239,68,68,0.92)] px-4 text-sm font-medium text-white hover:bg-[color:rgba(239,68,68,0.82)]"
-              >
-                Stop
-              </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={!input.trim()}
-                className="h-10 rounded-xl bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-4 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.28)] hover:brightness-[1.02] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
-              >
-                Send
-              </button>
-            )}
-          </form>
-        </main>
-      </div>
+        </form>
+      </main>
     </div>
   );
 }
