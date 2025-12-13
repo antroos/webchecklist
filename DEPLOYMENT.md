@@ -159,6 +159,20 @@ gcloud run logs tail webchecklist --region=us-central1
 - `NODE_ENV=production` — встановлюється автоматично
 - `PORT=8080` — встановлюється в Dockerfile
 
+Додатково для WebMorpher flow (auth + billing + credits):
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `NEXTAUTH_SECRET`
+- `NEXTAUTH_URL` — має збігатися з доменом, який бачить користувач (наприклад `https://webmorpher.com`)
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_PRICE_BASE` — monthly base subscription price id
+- `STRIPE_PRICE_METERED` — metered price id (1 unit = 1 analysis)
+- `FIREBASE_SERVICE_ACCOUNT_BASE64` (optional) — якщо не хочеш покладатися на Cloud Run service account (ADC)
+
+Webhook endpoint:
+- Stripe webhook URL: `/api/stripe/webhook`
+
 ---
 
 ## 🤖 GitHub Actions CI/CD (автодеплой)
@@ -177,6 +191,14 @@ GitHub Secrets, які мають бути додані в репозиторі�
 - `GCP_WIF_PROVIDER` — resource name провайдера WIF (OIDC)
 - `GCP_SA_EMAIL` — email service account (наприклад `github-deployer@...`)
 - `OPENAI_API_KEY` — ключ OpenAI (буде переданий в Cloud Run як env var)
+ - `GOOGLE_CLIENT_ID`
+ - `GOOGLE_CLIENT_SECRET`
+ - `NEXTAUTH_SECRET`
+ - `NEXTAUTH_URL`
+ - `STRIPE_SECRET_KEY`
+ - `STRIPE_WEBHOOK_SECRET`
+ - `STRIPE_PRICE_BASE`
+ - `STRIPE_PRICE_METERED`
 
 ### GitHub Environments (рекомендовано)
 Створи environments:
@@ -185,7 +207,21 @@ GitHub Secrets, які мають бути додані в репозиторі�
 
 ### Примітка
 - Локальні скрипти `deploy-*.sh` читають `OPENAI_API_KEY` з `web/.env.local`.
-- CI/CD workflow-и беруть `OPENAI_API_KEY` з GitHub Secrets і передають його через `--set-env-vars`.
+- CI/CD workflow-и беруть secrets з GitHub Secrets і передають їх через `--set-env-vars`.
+
+---
+
+## 🌐 Custom domain (webmorpher.com)
+
+Рекомендований варіант:
+- PROD: `webmorpher.com` → Cloud Run service `webchecklist`
+- TEST: залишити `*.run.app` або додати `test.webmorpher.com` → `webchecklist-test`
+
+Після підключення домену обовʼязково:
+- оновити `NEXTAUTH_URL=https://webmorpher.com` (prod) / `NEXTAUTH_URL=https://<your-test-domain>` (test)
+- у Google OAuth client додати redirect URI:
+  - `https://webmorpher.com/api/auth/callback/google`
+  - (і тестовий домен, якщо буде)
 
 ---
 

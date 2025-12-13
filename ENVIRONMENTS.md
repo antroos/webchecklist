@@ -86,3 +86,14 @@ Want to automate this further?
 
 Let me know if you want me to set this up! 🚀
 
+---
+
+## 🌐 WebMorpher domain notes
+
+When you map a custom domain (e.g. `webmorpher.com`) to Cloud Run:
+- Set `NEXTAUTH_URL` to the exact public URL users see.
+- Add Google OAuth redirect URI:
+  - `https://webmorpher.com/api/auth/callback/google`
+- Configure Stripe webhook to hit:
+  - `https://webmorpher.com/api/stripe/webhook`
+

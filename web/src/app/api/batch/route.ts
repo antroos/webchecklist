@@ -3,6 +3,7 @@ import { spawn } from "child_process";
 import path from "path";
 import OpenAI from "openai";
 import AdmZip from "adm-zip";
+import { auth } from "@/auth";
 
 const SYSTEM_PROMPT = `Create a detailed checklist for website page testing in CSV format.
 
@@ -99,6 +100,11 @@ function analyzePage(url: string): Promise<PythonResult> {
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { urls } = await req.json();
 
     if (!urls || !Array.isArray(urls) || urls.length === 0) {

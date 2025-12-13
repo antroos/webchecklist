@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import { spawn } from "child_process";
 import OpenAI from "openai";
+import { auth } from "@/auth";
 
 export const runtime = "nodejs";
 
@@ -72,6 +73,11 @@ async function runPython(url: string): Promise<string> {
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json();
     let url = (body?.url as string | undefined)?.trim();
 

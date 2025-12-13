@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { spawn } from "child_process";
 import path from "path";
 import OpenAI from "openai";
+import { auth } from "@/auth";
+import { FieldValue } from "firebase-admin/firestore";
+import { getAdminDb } from "@/lib/firebaseAdmin";
+import { getStripe } from "@/lib/stripe";
 
 export const runtime = "nodejs";
 
@@ -66,7 +70,120 @@ function extractAllUrlsFromText(text: string): string[] {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await auth();
+  const userId = (session?.user as { id?: string } | undefined)?.id;
+  if (!userId) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const body = await req.json();
+  const messages = (body?.messages ?? []) as ChatMessage[];
+  const explicitUrl = (body?.url as string | undefined)?.trim();
+  const requestId =
+    (body?.requestId as string | undefined)?.trim() ||
+    `rid-${Date.now()}-${Math.random()}`;
+
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  const userText = lastUser?.content ?? "";
+
+  // Build list of URLs to process
+  let urls: string[] = [];
+
+  if (explicitUrl) {
+    urls = [explicitUrl];
+  } else {
+    urls = extractAllUrlsFromText(userText);
+  }
+
+  urls = urls.map((u) => u.trim()).filter(Boolean);
+
+  if (!urls.length) {
+    return new Response("Please provide a URL in your message", { status: 400 });
+  }
+
+  // Reserve credits atomically before streaming any output.
+  const db = getAdminDb();
+  const userRef = db.collection("users").doc(userId);
+  const analysisRefs = urls.map((_, idx) =>
+    db.collection("analyses").doc(`${userId}_${requestId}_${idx}`),
+  );
+  let billingMode: "free" | "metered" = "free";
+  let stripeMeteredItemId: string | null = null;
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const userSnap = await tx.get(userRef);
+      const creditsRaw = userSnap.get("freeCreditsRemaining");
+      const credits =
+        typeof creditsRaw === "number" ? creditsRaw : 0;
+      const subStatus = userSnap.get("stripeSubscriptionStatus");
+      const meteredItemId = userSnap.get("stripeMeteredItemId");
+
+      const hasActiveSub =
+        typeof subStatus === "string" &&
+        (subStatus === "active" || subStatus === "trialing");
+      const hasMeteredItem = typeof meteredItemId === "string" && meteredItemId;
+
+      if (credits >= urls.length) {
+        billingMode = "free";
+      } else if (hasActiveSub && hasMeteredItem) {
+        billingMode = "metered";
+        stripeMeteredItemId = meteredItemId;
+      } else {
+        const err = new Error("PAYMENT_REQUIRED");
+        // @ts-expect-error attach code
+        err.code = "PAYMENT_REQUIRED";
+        throw err;
+      }
+
+      // Create analysis docs (idempotency for this requestId) and decrement credits once.
+      analysisRefs.forEach((ref, idx) => {
+        tx.set(
+          ref,
+          {
+            userId,
+            url: urls[idx],
+            requestId,
+            status: "processing",
+            billingMode,
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      });
+
+      tx.set(
+        userRef,
+        { updatedAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      );
+
+      if (billingMode === "free") {
+        tx.update(userRef, {
+          freeCreditsRemaining: credits - urls.length,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+    });
+  } catch (e) {
+    const code =
+      e && typeof e === "object" && "code" in e ? (e as any).code : undefined;
+    if (code === "PAYMENT_REQUIRED" || (e as Error)?.message === "PAYMENT_REQUIRED") {
+      return new Response("Payment required. Please upgrade to continue.", {
+        status: 402,
+      });
+    }
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return new Response(`Failed to reserve credits: ${msg}`, { status: 500 });
+  }
+
+  // NOTE: billingMode is mutated inside the transaction callback. Some TS/Next build setups
+  // can over-narrow it to "free" at this point; keep it widened explicitly.
+  const billingModeFinal = billingMode as "free" | "metered";
+
   const encoder = new TextEncoder();
+  const stripe = billingModeFinal === "metered" ? getStripe() : null;
   
   const stream = new ReadableStream({
     async start(controller) {
@@ -79,34 +196,6 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const body = await req.json();
-        const messages = (body?.messages ?? []) as ChatMessage[];
-        const explicitUrl = (body?.url as string | undefined)?.trim();
-
-        const lastUser = [...messages].reverse().find((m) => m.role === "user");
-        const userText = lastUser?.content ?? "";
-
-        // Build list of URLs to process
-        let urls: string[] = [];
-
-        if (explicitUrl) {
-          urls = [explicitUrl];
-        } else {
-          urls = extractAllUrlsFromText(userText);
-        }
-
-        urls = urls.map((u) => u.trim()).filter(Boolean);
-
-        if (!urls.length) {
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ type: "error", message: "Please provide a URL in your message" })}\n\n`,
-            ),
-          );
-          controller.close();
-          return;
-        }
-
         sendLog(`📨 Received request for ${urls.length} URL(s).`);
         urls.forEach((url, index) => {
           sendLog(`🔗 [${index + 1}/${urls.length}] ${url}`);
@@ -143,6 +232,7 @@ export async function POST(req: NextRequest) {
 
         for (let index = 0; index < urls.length; index++) {
           const url = urls[index];
+          const analysisRef = analysisRefs[index];
 
           sendLog(`🚀 [${index + 1}/${urls.length}] Preparing to launch browser for ${url}...`);
 
@@ -242,6 +332,45 @@ export async function POST(req: NextRequest) {
 
             sendLog(`✅ Checklist generated successfully for ${url}`);
 
+            let stripeUsageRecordId: string | null = null;
+            if (billingModeFinal === "metered" && stripe && stripeMeteredItemId) {
+              try {
+                const usage = await stripe.rawRequest(
+                  "post",
+                  `/v1/subscription_items/${stripeMeteredItemId}/usage_records`,
+                  {
+                    quantity: 1,
+                    timestamp: Math.floor(Date.now() / 1000),
+                    action: "increment",
+                  },
+                  {
+                    idempotencyKey: analysisRef.id,
+                  },
+                );
+                stripeUsageRecordId =
+                  (usage as any)?.id ?? (usage as any)?.data?.id ?? null;
+              } catch (err) {
+                // If billing fails, treat as error (avoid giving free results without charging).
+                const msg = err instanceof Error ? err.message : "Stripe usage record error";
+                throw new Error(`Billing failed: ${msg}`);
+              }
+            }
+
+            // Mark analysis as completed (store minimal metadata; full artifacts are returned to the client).
+            try {
+              await analysisRef.set(
+                {
+                  status: "completed",
+                  updatedAt: FieldValue.serverTimestamp(),
+                  completedAt: FieldValue.serverTimestamp(),
+                  stripeUsageRecordId,
+                },
+                { merge: true },
+              );
+            } catch {
+              // non-fatal
+            }
+
             // Send result for this URL
             controller.enqueue(
               encoder.encode(
@@ -260,6 +389,18 @@ export async function POST(req: NextRequest) {
                 : "Unexpected error during page analysis";
             sendLog(`❌ Failed to process ${url}: ${message}`);
             const fullMessage = `Failed to process ${url}: ${message}`;
+            try {
+              await analysisRef.set(
+                {
+                  status: "error",
+                  error: fullMessage,
+                  updatedAt: FieldValue.serverTimestamp(),
+                },
+                { merge: true },
+              );
+            } catch {
+              // non-fatal
+            }
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({ type: "error", message: fullMessage })}\n\n`,
