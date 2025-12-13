@@ -5,7 +5,7 @@ import { authOptions } from "@/auth";
 
 const handler = NextAuth(authOptions);
 
-function logAuth(req: NextRequest, phase: string) {
+function logAuth(req: NextRequest, phase: string, ctx: unknown) {
   try {
     const cookie = req.headers.get("cookie") ?? "";
     const cookieKeys = cookie
@@ -21,6 +21,7 @@ function logAuth(req: NextRequest, phase: string) {
       host: req.headers.get("host"),
       forwardedHost: req.headers.get("x-forwarded-host"),
       forwardedProto: req.headers.get("x-forwarded-proto"),
+      params: (ctx as any)?.params ?? null,
       refererHost: (() => {
         const ref = req.headers.get("referer");
         try {
@@ -47,14 +48,14 @@ function logAuth(req: NextRequest, phase: string) {
   }
 }
 
-export function GET(req: NextRequest) {
-  logAuth(req, "GET");
-  return handler(req as any);
+export function GET(req: NextRequest, ctx: unknown) {
+  logAuth(req, "GET", ctx);
+  return (handler as any)(req, ctx);
 }
 
-export function POST(req: NextRequest) {
-  logAuth(req, "POST");
-  return handler(req as any);
+export function POST(req: NextRequest, ctx: unknown) {
+  logAuth(req, "POST", ctx);
+  return (handler as any)(req, ctx);
 }
 
 
