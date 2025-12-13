@@ -178,8 +178,12 @@ export async function POST(req: NextRequest) {
     return new Response(`Failed to reserve credits: ${msg}`, { status: 500 });
   }
 
+  // NOTE: billingMode is mutated inside the transaction callback. Some TS/Next build setups
+  // can over-narrow it to "free" at this point; keep it widened explicitly.
+  const billingModeFinal = billingMode as "free" | "metered";
+
   const encoder = new TextEncoder();
-  const stripe = billingMode === "metered" ? getStripe() : null;
+  const stripe = billingModeFinal === "metered" ? getStripe() : null;
   
   const stream = new ReadableStream({
     async start(controller) {
@@ -329,10 +333,11 @@ export async function POST(req: NextRequest) {
             sendLog(`✅ Checklist generated successfully for ${url}`);
 
             let stripeUsageRecordId: string | null = null;
-            if (billingMode === "metered" && stripe && stripeMeteredItemId) {
+            if (billingModeFinal === "metered" && stripe && stripeMeteredItemId) {
               try {
-                const usage = await stripe.subscriptionItems.createUsageRecord(
-                  stripeMeteredItemId,
+                const usage = await stripe.rawRequest(
+                  "post",
+                  `/v1/subscription_items/${stripeMeteredItemId}/usage_records`,
                   {
                     quantity: 1,
                     timestamp: Math.floor(Date.now() / 1000),
@@ -342,7 +347,8 @@ export async function POST(req: NextRequest) {
                     idempotencyKey: analysisRef.id,
                   },
                 );
-                stripeUsageRecordId = usage.id;
+                stripeUsageRecordId =
+                  (usage as any)?.id ?? (usage as any)?.data?.id ?? null;
               } catch (err) {
                 // If billing fails, treat as error (avoid giving free results without charging).
                 const msg = err instanceof Error ? err.message : "Stripe usage record error";
