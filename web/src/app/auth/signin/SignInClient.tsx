@@ -25,7 +25,6 @@ export default function SignInClient({ callbackUrl }: { callbackUrl: string }) {
             href: typeof window !== "undefined" ? window.location.href : null,
             origin: typeof window !== "undefined" ? window.location.origin : null,
             host: typeof window !== "undefined" ? window.location.host : null,
-            callbackUrl,
           },
           timestamp: Date.now(),
         }),
@@ -95,7 +94,9 @@ export default function SignInClient({ callbackUrl }: { callbackUrl: string }) {
         // #endregion agent log
       }
     })();
-  }, [callbackUrl]);
+    // This probe is independent of callbackUrl; run once per mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[color:var(--bg)] px-6 text-[color:var(--text)]">
