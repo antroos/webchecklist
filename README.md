@@ -66,6 +66,10 @@ Check,Opera GX,Chrome,Android Chrome,Android Browser,iOS Chrome,iOS Safari,MacOS
 Ready to deploy on:
 - Web app: Cloud Run / Vercel (Node runtime required; Python analyzer must be available in the build image)
 
+### Ops docs
+- `DEPLOYMENT.md` — deployment setup + CI/CD notes
+- `RUNBOOK.md` — step-by-step deploy + smoke-tests + troubleshooting (CTO-safe)
+
 ## Roadmap
 
 - [ ] Public landing → connect to web analyzer endpoint
