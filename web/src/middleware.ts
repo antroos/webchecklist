@@ -17,14 +17,17 @@ export function middleware(req: NextRequest) {
   const configured = process.env.NEXTAUTH_URL;
   if (configured) {
     try {
-      const canonicalHost = new URL(configured).host;
+      const canonical = new URL(configured);
+      const canonicalHost = canonical.host;
       const reqHost =
         req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
       if (canonicalHost && reqHost && canonicalHost !== reqHost) {
         const url = req.nextUrl.clone();
-        url.host = canonicalHost;
+        // NextURL can retain an internal port (e.g. 8080 on Cloud Run). Force-clear it.
+        url.hostname = canonical.hostname;
+        url.port = canonical.port; // usually "" (empty)
         // Keep protocol aligned with the configured URL.
-        url.protocol = new URL(configured).protocol;
+        url.protocol = canonical.protocol;
         return NextResponse.redirect(url, 308);
       }
     } catch {
