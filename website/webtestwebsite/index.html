@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WebTest — A second set of eyes for your website</title>
+    <meta
+      name="description"
+      content="A calm second pair of eyes for solo builders: structured QA-style review and a practical checklist of what to check on your website."
+    />
+
+    <meta name="color-scheme" content="light" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="WebTest — A second set of eyes for your website" />
+    <meta
+      property="og:description"
+      content="Built alone? Make sure nothing is broken. Get a QA-style review and a practical checklist of what to check."
+    />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="#top" aria-label="WebTest home">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span class="brand-name">WebTest</span>
+        </a>
+
+        <nav class="nav" aria-label="Primary">
+          <a href="#problem">Problem</a>
+          <a href="#how">How it works</a>
+          <a href="#get">What you get</a>
+          <a href="#for">Who it’s for</a>
+          <a class="nav-cta" href="#try">Check my website</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top">
+        <div class="container hero-inner">
+          <div class="hero-copy">
+            <p class="eyebrow">Built alone? Make sure nothing is broken.</p>
+            <h1>A second set of eyes for your website — when you don’t have a team.</h1>
+            <p class="lead">
+              This tool reviews your website the way a careful QA Lead would — before any tests, scripts, or
+              automation — so you can answer one simple question:
+              <span class="lead-quote">“Did I overlook anything important?”</span>
+            </p>
+
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="#try">Check my website</a>
+              <a class="btn btn-secondary" href="#get">See what you get</a>
+            </div>
+
+            <ul class="hero-bullets" aria-label="Highlights">
+              <li>No setup</li>
+              <li>No scripts</li>
+              <li>No clicking through every page manually</li>
+            </ul>
+          </div>
+
+          <div class="hero-card" aria-label="Preview">
+            <div class="hero-card-top">
+              <div class="pill">Output</div>
+              <div class="pill pill-muted">Checklist</div>
+              <div class="pill pill-muted">Risk areas</div>
+            </div>
+            <div class="hero-card-body">
+              <div class="checkrow">
+                <span class="dot dot-ok" aria-hidden="true"></span>
+                <div>
+                  <div class="check-title">Translation coverage</div>
+                  <div class="check-desc">Sections that often remain untranslated after edits.</div>
+                </div>
+              </div>
+              <div class="checkrow">
+                <span class="dot dot-warn" aria-hidden="true"></span>
+                <div>
+                  <div class="check-title">Flow consistency</div>
+                  <div class="check-desc">Critical blocks behaving differently across pages.</div>
+                </div>
+              </div>
+              <div class="checkrow">
+                <span class="dot dot-warn" aria-hidden="true"></span>
+                <div>
+                  <div class="check-title">UI/content mismatches</div>
+                  <div class="check-desc">Copy, spacing, and states that drift after refactors.</div>
+                </div>
+              </div>
+            </div>
+            <div class="hero-card-foot">
+              <span class="small">A structured way to review your own work — like having calm, experienced eyes.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="problem">
+        <div class="container">
+          <div class="section-head">
+            <h2>The problem</h2>
+            <p>
+              When you build a website alone, things break quietly. Nothing crashes. No errors show up. But later you
+              notice:
+            </p>
+          </div>
+
+          <div class="grid grid-3">
+            <div class="card">
+              <h3>A section wasn’t translated</h3>
+              <p>New language added — and a few blocks stayed in the old one.</p>
+            </div>
+            <div class="card">
+              <h3>A flow feels inconsistent</h3>
+              <p>Buttons, pages, or states don’t match the path users actually take.</p>
+            </div>
+            <div class="card">
+              <h3>A critical block behaves differently</h3>
+              <p>After a refactor, one key component subtly changed across the site.</p>
+            </div>
+          </div>
+
+          <div class="note">
+            <p>
+              You didn’t miss it because you’re careless. You missed it because you can’t see everything at once.
+              <strong>The hardest part isn’t fixing bugs. It’s knowing what to check.</strong>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-muted" id="why">
+        <div class="container">
+          <div class="section-head">
+            <h2>Why this happens</h2>
+            <p>Most tools assume you already know what to test. As a result, small issues slip through — especially after changes.</p>
+          </div>
+
+          <div class="list">
+            <div class="list-item">
+              <div class="list-title">Automated tests</div>
+              <div class="list-text">Only check what you explicitly describe.</div>
+            </div>
+            <div class="list-item">
+              <div class="list-title">Manual review</div>
+              <div class="list-text">Is slow and exhausting.</div>
+            </div>
+            <div class="list-item">
+              <div class="list-title">Solo building</div>
+              <div class="list-text">Means no second person to double-check things.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="what">
+        <div class="container">
+          <div class="section-head">
+            <h2>What this tool does</h2>
+            <p>
+              This tool reviews your website the way a careful QA Lead would — before any tests, scripts, or automation.
+              It helps you answer one simple question:
+              <strong>“Did I overlook anything important?”</strong>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="how">
+        <div class="container">
+          <div class="section-head">
+            <h2>How it works</h2>
+          </div>
+
+          <ol class="steps" aria-label="How it works steps">
+            <li class="step">
+              <div class="step-num">1</div>
+              <div class="step-body">
+                <div class="step-title">You paste a website URL</div>
+                <div class="step-text">No setup. No scripts. No repo access required.</div>
+              </div>
+            </li>
+            <li class="step">
+              <div class="step-num">2</div>
+              <div class="step-body">
+                <div class="step-title">The tool analyzes structure, content, and flows</div>
+                <div class="step-text">It looks at what users will likely do — not just what pages exist.</div>
+              </div>
+            </li>
+            <li class="step">
+              <div class="step-num">3</div>
+              <div class="step-body">
+                <div class="step-title">You get a clear list of what to check</div>
+                <div class="step-text">A practical checklist + the places where issues like to hide.</div>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="section section-muted" id="get">
+        <div class="container">
+          <div class="section-head">
+            <h2>What you get</h2>
+          </div>
+
+          <div class="grid grid-2">
+            <div class="card">
+              <h3>Website understanding</h3>
+              <ul>
+                <li>What type of site this is (SaaS, landing page, e-commerce, etc.)</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>Key user flows</h3>
+              <ul>
+                <li>The paths real users are likely to take</li>
+                <li>Where consistency matters most</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>Risk areas</h3>
+              <ul>
+                <li>Sections that often break after changes</li>
+                <li>Language, content, and UI mismatches</li>
+                <li>Areas that deserve extra attention</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>A practical checklist</h3>
+              <ul>
+                <li>Functional checks</li>
+                <li>UI and content consistency</li>
+                <li>UX edge cases</li>
+                <li>Things easy to miss when working alone</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>Automation guidance</h3>
+              <ul>
+                <li>What could be automated later</li>
+                <li>What should stay manual</li>
+                <li>What is not worth testing at all</li>
+              </ul>
+            </div>
+            <div class="card card-contrast">
+              <h3>What this is not</h3>
+              <ul>
+                <li>Not a test runner</li>
+                <li>Not an automation framework</li>
+                <li>Not a replacement for QA</li>
+                <li>It doesn’t try to catch every bug</li>
+                <li>It helps you notice what you might otherwise miss</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="for">
+        <div class="container">
+          <div class="section-head">
+            <h2>Who it’s for</h2>
+            <p>If you’ve ever thought “I hope nothing is broken” — this is for you.</p>
+          </div>
+
+          <div class="chips" aria-label="Audience">
+            <span class="chip">Solo founders</span>
+            <span class="chip">Indie hackers</span>
+            <span class="chip">Small teams without dedicated QA</span>
+            <span class="chip">Developers building and shipping alone</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-muted" id="works">
+        <div class="container">
+          <div class="section-head">
+            <h2>Why it works</h2>
+            <p>
+              Because most issues aren’t found by tools. They’re found by attention and context. This tool gives you a
+              structured way to look at your own work — like having a calm, experienced second pair of eyes.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="try">
+        <div class="container">
+          <div class="section-head">
+            <h2>Try it</h2>
+            <p>Paste your website. See what’s worth checking.</p>
+          </div>
+
+          <form class="try" id="try-form" autocomplete="off" novalidate>
+            <label class="sr-only" for="site-url">Website URL</label>
+            <input
+              id="site-url"
+              name="url"
+              type="url"
+              inputmode="url"
+              placeholder="https://your-website.com"
+              required
+            />
+            <button class="btn btn-primary" type="submit">Check my website</button>
+          </form>
+
+          <p class="form-hint" id="try-result" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <div class="footer-left">
+          <div class="brand brand-footer">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <span class="brand-name">WebTest</span>
+          </div>
+          <p class="small">A second set of eyes for your website.</p>
+        </div>
+        <div class="footer-right">
+          <a href="#top">Back to top</a>
+        </div>
+      </div>
+    </footer>
+
+    <script src="./script.js" defer></script>
+  </body>
+</html>
+
+
