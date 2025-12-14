@@ -81,6 +81,23 @@ git push
 - `NEXTAUTH_URL` = `https://webmorpher.com`
 - `NEXTAUTH_SECRET`
 
+## 4.1) Stripe webhooks (важливо: TEST vs LIVE)
+
+- **Stripe Test mode** і **Stripe Live mode** мають **окремі webhook endpoints** (і різні `whsec_...`).
+- Наш бекенд слухає webhook тільки тут:
+  - **PROD**: `https://webmorpher.com/api/stripe/webhook`
+  - **TEST**: `<testUrl>/api/stripe/webhook`
+- Stripe Workbench може показувати **Destination id / destination client** — **вони не потрібні** для нашого коду.
+- Потрібно зберегти тільки:
+  - `STRIPE_WEBHOOK_SECRET` = **Signing secret** (`whsec_...`) саме цього endpoint’а (Test або Live)
+  - `STRIPE_SECRET_KEY` = `sk_test_...` (TEST) або `sk_live_...` (PROD)
+  - `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_METERED` (відповідний режим)
+
+Рекомендовані події для endpoint’а:
+- `checkout.session.completed`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+
 ## 5) Часті помилки і 2-хв рішення
 
 ### A) `/api/auth/providers` → “There is a problem with the server configuration…”
