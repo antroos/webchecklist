@@ -181,6 +181,18 @@ gcloud run logs tail webchecklist --region=us-central1
 Webhook endpoint:
 - Stripe webhook URL: `/api/stripe/webhook`
 
+### Stripe webhook: що саме треба (і що НЕ треба)
+
+- **Endpoint URL (PROD, Live mode)**: `https://webmorpher.com/api/stripe/webhook`
+- **Endpoint URL (TEST, Test mode)**: `<testUrl>/api/stripe/webhook`
+- **Events**:
+  - `checkout.session.completed`
+  - `customer.subscription.updated`
+  - `customer.subscription.deleted`
+
+Stripe UI може показати **Destination id / destination client** — **вони не використовуються** нашим бекендом.
+Ми використовуємо тільки **Signing secret** (`whsec_...`) як `STRIPE_WEBHOOK_SECRET`.
+
 ---
 
 ## 🤖 GitHub Actions CI/CD (автодеплой)

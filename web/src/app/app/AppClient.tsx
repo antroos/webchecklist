@@ -28,6 +28,13 @@ type OverageCapPayload = {
   unlocked: boolean;
 };
 
+type BillingStatusMini = {
+  plan: "starter" | "pro" | null;
+  includedMonthlyLimit: number;
+  periodIncludedUsed: number;
+  includedRemaining: number;
+};
+
 function centsToDollars(cents: number) {
   return Math.round(cents) / 100;
 }
@@ -35,6 +42,7 @@ function centsToDollars(cents: number) {
 export default function AppClient() {
   const router = useRouter();
   const [credits, setCredits] = useState<number | null>(null);
+  const [billing, setBilling] = useState<BillingStatusMini | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome",
@@ -60,13 +68,34 @@ export default function AppClient() {
       : `rid-${Date.now()}-${Math.random()}`;
   }, []);
 
-  async function refreshCredits() {
+  async function refreshHeaderStats() {
     try {
-      const res = await fetch("/api/me");
-      if (!res.ok) return;
-      const data = (await res.json()) as { freeCreditsRemaining?: number };
-      if (typeof data.freeCreditsRemaining === "number") {
-        setCredits(data.freeCreditsRemaining);
+      const [meRes, billingRes] = await Promise.all([
+        fetch("/api/me"),
+        fetch("/api/billing/status"),
+      ]);
+
+      if (meRes.ok) {
+        const data = (await meRes.json()) as { freeCreditsRemaining?: number };
+        if (typeof data.freeCreditsRemaining === "number") {
+          setCredits(data.freeCreditsRemaining);
+        }
+      }
+
+      if (billingRes.ok) {
+        const data = (await billingRes.json()) as Partial<BillingStatusMini>;
+        setBilling({
+          plan: data.plan === "starter" || data.plan === "pro" ? data.plan : null,
+          includedMonthlyLimit:
+            typeof data.includedMonthlyLimit === "number" ? data.includedMonthlyLimit : 0,
+          periodIncludedUsed:
+            typeof data.periodIncludedUsed === "number" ? data.periodIncludedUsed : 0,
+          includedRemaining:
+            typeof data.includedRemaining === "number" ? data.includedRemaining : 0,
+        });
+      } else {
+        // If user has no billing status yet (or endpoint fails), keep UI safe.
+        setBilling(null);
       }
     } catch {
       // ignore
@@ -74,8 +103,7 @@ export default function AppClient() {
   }
 
   useEffect(() => {
-    void refreshCredits();
-
+    void refreshHeaderStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -172,7 +200,7 @@ export default function AppClient() {
               ]);
             } else if (event.type === "result") {
               // Credits were reserved server-side; refresh after the run.
-              void refreshCredits();
+              void refreshHeaderStats();
               setMessages((prev) => [
                 ...prev,
                 {
@@ -186,7 +214,7 @@ export default function AppClient() {
               ]);
             } else if (event.type === "error") {
               setError(event.message);
-              void refreshCredits();
+              void refreshHeaderStats();
               setMessages((prev) => [
                 ...prev,
                 {
@@ -220,7 +248,7 @@ export default function AppClient() {
             ? err.message
             : "Network error while calling /api/agent.";
         setError(message);
-        void refreshCredits();
+        void refreshHeaderStats();
         setMessages((prev) => [
           ...prev,
           {
@@ -304,7 +332,7 @@ export default function AppClient() {
                 },
               ]);
             } else if (event.type === "result") {
-              void refreshCredits();
+              void refreshHeaderStats();
               setMessages((prev) => [
                 ...prev,
                 {
@@ -318,7 +346,7 @@ export default function AppClient() {
               ]);
             } else if (event.type === "error") {
               setError(event.message);
-              void refreshCredits();
+              void refreshHeaderStats();
               setMessages((prev) => [
                 ...prev,
                 {
@@ -472,8 +500,14 @@ export default function AppClient() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="rounded-full border border-[color:rgba(97,106,243,0.28)] bg-[color:rgba(97,106,243,0.12)] px-3 py-1 text-[11px] font-medium text-[color:rgba(11,18,32,0.84)]">
-            {credits === null ? "…" : `${credits} free left`}
+            {credits === null ? "…" : `${credits} free`}
           </div>
+          {billing?.plan && billing.includedMonthlyLimit > 0 && (
+            <div className="rounded-full border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.80)] px-3 py-1 text-[11px] font-medium text-[color:rgba(11,18,32,0.84)]">
+              Used {billing.periodIncludedUsed} · Remaining {billing.includedRemaining}/
+              {billing.includedMonthlyLimit}
+            </div>
+          )}
           <button
             onClick={() => signOut({ callbackUrl: "/" })}
             className="rounded-full border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.85)] px-3 py-1 text-[11px] font-medium text-[color:rgba(11,18,32,0.84)] hover:bg-[color:rgba(255,255,255,0.95)]"

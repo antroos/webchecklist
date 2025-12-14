@@ -56,7 +56,8 @@ export async function POST(req: NextRequest) {
     metadata: { userId, plan },
     line_items: [
       { price: basePrice, quantity: 1 },
-      { price: meteredPrice, quantity: 1 },
+      // Stripe requirement: metered prices must NOT include quantity.
+      { price: meteredPrice },
     ],
   });
 
