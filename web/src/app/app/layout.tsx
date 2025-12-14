@@ -1,8 +1,10 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import SidebarNav from "./sidebar/SidebarNav";
+import ChatList from "./sidebar/ChatList";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -30,6 +32,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <div className="mt-4">
               <SidebarNav />
             </div>
+
+            <Suspense fallback={null}>
+              <ChatList />
+            </Suspense>
 
             <div className="mt-4 rounded-xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)] p-3">
               <div className="text-xs font-semibold text-[color:rgba(11,18,32,0.78)]">

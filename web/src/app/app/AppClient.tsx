@@ -11,6 +11,7 @@ type ChatMessage = {
   kind?: "status" | "result" | "plain";
   csv?: string;
   raw?: unknown;
+  html?: string;
 };
 
 // SSE event types from /api/agent
@@ -39,10 +40,11 @@ function centsToDollars(cents: number) {
   return Math.round(cents) / 100;
 }
 
-export default function AppClient() {
+export default function AppClient({ chatId }: { chatId: string | null }) {
   const router = useRouter();
   const [credits, setCredits] = useState<number | null>(null);
   const [billing, setBilling] = useState<BillingStatusMini | null>(null);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome",
@@ -67,6 +69,52 @@ export default function AppClient() {
       ? crypto.randomUUID()
       : `rid-${Date.now()}-${Math.random()}`;
   }, []);
+
+  async function persistMessage(params: {
+    chatId: string;
+    role: "user" | "assistant";
+    kind: "status" | "result" | "plain";
+    content: string;
+    artifacts?: { csv?: string; raw?: unknown; html?: string };
+  }) {
+    try {
+      await fetch(`/api/chats/${encodeURIComponent(params.chatId)}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: params.role,
+          kind: params.kind,
+          content: params.content,
+          artifacts: params.artifacts,
+        }),
+      });
+    } catch {
+      // ignore (MVP: keep UX working even if persistence fails)
+    }
+  }
+
+  async function loadChat(chatId: string) {
+    try {
+      const res = await fetch(`/api/chats/${encodeURIComponent(chatId)}/messages`);
+      if (!res.ok) return false;
+      const data = (await res.json()) as { messages?: any[] };
+      const list = Array.isArray(data.messages) ? data.messages : [];
+      setMessages(
+        list.map((m) => ({
+          id: String(m.id ?? `m-${Math.random()}`),
+          role: m.role === "user" ? "user" : "assistant",
+          kind: m.kind === "status" || m.kind === "result" || m.kind === "plain" ? m.kind : "plain",
+          content: typeof m.content === "string" ? m.content : "",
+          csv: typeof m.artifacts?.csv === "string" ? m.artifacts.csv : undefined,
+          raw: typeof m.artifacts?.raw !== "undefined" ? m.artifacts.raw : undefined,
+          html: typeof m.artifacts?.html === "string" ? m.artifacts.html : undefined,
+        })),
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   async function refreshHeaderStats() {
     try {
@@ -107,6 +155,57 @@ export default function AppClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function ensure() {
+      if (!chatId) {
+        setActiveChatId(null);
+        try {
+          const res = await fetch("/api/chats", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+          if (!res.ok) return;
+          const data = (await res.json()) as { chatId?: string };
+          if (!data.chatId) return;
+          if (!cancelled) {
+            router.replace(`/app?chatId=${encodeURIComponent(data.chatId)}`);
+          }
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
+      setActiveChatId(chatId);
+      const ok = await loadChat(chatId);
+      if (!ok) {
+        // Fallback: if chat does not exist (or access denied), create a new one.
+        try {
+          const res = await fetch("/api/chats", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+          if (!res.ok) return;
+          const data = (await res.json()) as { chatId?: string };
+          if (!data.chatId) return;
+          if (!cancelled) {
+            router.replace(`/app?chatId=${encodeURIComponent(data.chatId)}`);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    void ensure();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId, router]);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -127,6 +226,15 @@ export default function AppClient() {
     setMessages(nextMessages);
     setInput("");
     setIsLoading(true);
+
+    if (activeChatId) {
+      void persistMessage({
+        chatId: activeChatId,
+        role: "user",
+        kind: "plain",
+        content: userMessage.content,
+      });
+    }
 
     const controller = new AbortController();
     setAbortController(controller);
@@ -189,41 +297,63 @@ export default function AppClient() {
             const event = JSON.parse(jsonStr) as SSEEvent;
 
             if (event.type === "log") {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `log-${Date.now()}-${Math.random()}`,
+              const msg: ChatMessage = {
+                id: `log-${Date.now()}-${Math.random()}`,
+                role: "assistant",
+                kind: "status",
+                content: event.message,
+              };
+              setMessages((prev) => [...prev, msg]);
+              if (activeChatId) {
+                void persistMessage({
+                  chatId: activeChatId,
                   role: "assistant",
                   kind: "status",
-                  content: event.message,
-                },
-              ]);
+                  content: msg.content,
+                });
+              }
             } else if (event.type === "result") {
               // Credits were reserved server-side; refresh after the run.
               void refreshHeaderStats();
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `result-${Date.now()}`,
+              const rawAny = event.raw as any;
+              const html = typeof rawAny?.html === "string" ? rawAny.html : undefined;
+              const msg: ChatMessage = {
+                id: `result-${Date.now()}`,
+                role: "assistant",
+                kind: "result",
+                content: `Checklist for ${event.url}`,
+                csv: event.csv,
+                raw: event.raw,
+                html,
+              };
+              setMessages((prev) => [...prev, msg]);
+              if (activeChatId) {
+                void persistMessage({
+                  chatId: activeChatId,
                   role: "assistant",
                   kind: "result",
-                  content: `Checklist for ${event.url}`,
-                  csv: event.csv,
-                  raw: event.raw,
-                },
-              ]);
+                  content: msg.content,
+                  artifacts: { csv: msg.csv, raw: msg.raw, html: msg.html },
+                });
+              }
             } else if (event.type === "error") {
               setError(event.message);
               void refreshHeaderStats();
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `err-${Date.now()}`,
+              const msg: ChatMessage = {
+                id: `err-${Date.now()}`,
+                role: "assistant",
+                kind: "plain",
+                content: event.message,
+              };
+              setMessages((prev) => [...prev, msg]);
+              if (activeChatId) {
+                void persistMessage({
+                  chatId: activeChatId,
                   role: "assistant",
                   kind: "plain",
-                  content: event.message,
-                },
-              ]);
+                  content: msg.content,
+                });
+              }
             }
           } catch (parseErr) {
             console.warn("Failed to parse SSE event:", line, parseErr);
@@ -374,7 +504,11 @@ export default function AppClient() {
   function renderMessage(message: ChatMessage) {
     const isAssistant = message.role === "assistant";
 
-    if (message.kind === "result" && message.csv && message.raw) {
+    if (message.kind === "result" && message.csv) {
+      const html =
+        message.html ||
+        ((message.raw as { html?: string } | undefined)?.html ?? "") ||
+        "";
       return (
         <div
           key={message.id}
@@ -407,6 +541,7 @@ export default function AppClient() {
               </button>
               <button
                 onClick={() => {
+                  if (!message.raw) return;
                   const blob = new Blob(
                     [JSON.stringify(message.raw, null, 2)],
                     {
@@ -420,14 +555,14 @@ export default function AppClient() {
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
+                disabled={!message.raw}
                 className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.85)] px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-[color:rgba(255,255,255,0.95)]"
               >
                 📊 Download JSON
               </button>
               <button
                 onClick={() => {
-                  const html =
-                    (message.raw as { html?: string } | undefined)?.html || "";
+                  if (!html) return;
                   const blob = new Blob([html], { type: "text/html" });
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement("a");
@@ -436,6 +571,7 @@ export default function AppClient() {
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
+                disabled={!html}
                 className="h-8 rounded-lg border border-[color:rgba(97,106,243,0.22)] bg-[color:rgba(97,106,243,0.10)] px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-[color:rgba(97,106,243,0.14)]"
               >
                 🌐 Download HTML
@@ -456,7 +592,9 @@ export default function AppClient() {
                   Raw Page Analysis (JSON snapshot)
                 </h3>
                 <pre className="max-h-64 overflow-auto rounded-lg border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.92)] p-2 text-[11px] text-[color:rgba(11,18,32,0.86)]">
-                  {JSON.stringify(message.raw, null, 2).slice(0, 4000)}
+                  {message.raw
+                    ? JSON.stringify(message.raw, null, 2).slice(0, 4000)
+                    : "JSON snapshot was not stored (too large)."}
                 </pre>
               </div>
             </div>
