@@ -532,6 +532,7 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
         ((message.raw as { html?: string } | undefined)?.html ?? "") ||
         "";
       const parsed = parseCsvChecklistToText(message.csv);
+      const copyText = parsed.text || message.csv || "";
       return (
         <div
           key={message.id}
@@ -554,11 +555,13 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
                 type="button"
                 onClick={async () => {
                   try {
-                    await navigator.clipboard.writeText(parsed.text || message.csv);
+                    if (!copyText) return;
+                    await navigator.clipboard.writeText(copyText);
                   } catch {
                     // ignore
                   }
                 }}
+                disabled={!copyText}
                 className="h-8 shrink-0 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/85 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-white"
               >
                 Copy
