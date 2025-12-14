@@ -12,6 +12,7 @@ type ChatMessage = {
   csv?: string;
   raw?: unknown;
   html?: string;
+  reportText?: string; // human-friendly rendering for in-app report (derived from csv)
 };
 
 // SSE event types from /api/agent
@@ -40,6 +41,96 @@ function centsToDollars(cents: number) {
   return Math.round(cents) / 100;
 }
 
+type ReportSummary = { critical: number; medium: number; minor: number };
+
+function parseCsvChecklistToText(csv: string): string {
+  const lines = csv
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (!lines.length) return "";
+  // Skip header if present
+  const start = lines[0].toLowerCase().startsWith("check,") ? 1 : 0;
+  const checks: string[] = [];
+  for (const line of lines.slice(start)) {
+    // CSV row starts with "Check description",...
+    const m = line.match(/^"([^"]+)"/);
+    const check = (m?.[1] ?? "").trim();
+    if (check) checks.push(check);
+  }
+  if (!checks.length) return "";
+
+  // Heuristic grouping based on common keywords
+  const groups: Array<{ title: string; match: (s: string) => boolean }> = [
+    { title: "Header", match: (s) => /(^|\b)header\b/i.test(s) },
+    { title: "Footer", match: (s) => /(^|\b)footer\b/i.test(s) },
+    { title: "Forms", match: (s) => /\bform\b|\binput\b|\bfield\b/i.test(s) },
+    { title: "Navigation & links", match: (s) => /\blink\b|\bnav\b|\bmenu\b/i.test(s) },
+    { title: "Buttons & CTAs", match: (s) => /\bbutton\b|\bcta\b/i.test(s) },
+    { title: "Layout & responsiveness", match: (s) => /\bresponsive\b|\bmobile\b|\blayout\b|\balign/i.test(s) },
+    { title: "Text", match: (s) => /\btext\b|\bheading\b|\btitle\b/i.test(s) },
+    { title: "Images", match: (s) => /\bimage\b|\bicon\b|\bimg\b/i.test(s) },
+  ];
+
+  const buckets = new Map<string, string[]>();
+  for (const g of groups) buckets.set(g.title, []);
+  buckets.set("Other", []);
+
+  for (const c of checks) {
+    const group = groups.find((g) => g.match(c))?.title ?? "Other";
+    buckets.get(group)!.push(c);
+  }
+
+  const parts: string[] = [];
+  parts.push("QA report");
+  parts.push("");
+  parts.push("Summary");
+  parts.push(`- ✅ Checks: ${checks.length}`);
+  parts.push("");
+  for (const [title, items] of buckets) {
+    if (!items.length) continue;
+    parts.push(title);
+    for (const item of items.slice(0, 25)) {
+      parts.push(`- ${item}`);
+    }
+    if (items.length > 25) parts.push(`- …and ${items.length - 25} more`);
+    parts.push("");
+  }
+  return parts.join("\n").trim();
+}
+
+function computeSummaryFromText(text: string): ReportSummary {
+  const t = text || "";
+  const critical = (t.match(/[❌]/g) || []).length + (t.match(/\bcritical\b/gi) || []).length;
+  const medium = (t.match(/[⚠️]/g) || []).length + (t.match(/\bmedium\b/gi) || []).length;
+  const minor = (t.match(/[✅]/g) || []).length + (t.match(/\bminor\b/gi) || []).length;
+  return { critical, medium, minor };
+}
+
+function splitReportSections(text: string): Array<{ title: string; body: string }> {
+  const lines = (text || "").split(/\r?\n/);
+  const sections: Array<{ title: string; body: string[] }> = [];
+  let current = { title: "Report", body: [] as string[] };
+  for (const line of lines) {
+    const headerLike =
+      line.trim() &&
+      !line.startsWith("-") &&
+      !line.startsWith("•") &&
+      /^[A-Za-z0-9].{0,40}$/.test(line.trim()) &&
+      line.trim() === line.trim().replace(/[:.]$/, "");
+    if (headerLike && current.body.length) {
+      sections.push({ title: current.title, body: current.body });
+      current = { title: line.trim(), body: [] };
+      continue;
+    }
+    current.body.push(line);
+  }
+  sections.push({ title: current.title, body: current.body });
+  return sections
+    .map((s) => ({ title: s.title, body: s.body.join("\n").trim() }))
+    .filter((s) => s.body);
+}
+
 export default function AppClient({ chatId }: { chatId: string | null }) {
   const router = useRouter();
   const [credits, setCredits] = useState<number | null>(null);
@@ -62,6 +153,7 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
   const [needsUpgrade, setNeedsUpgrade] = useState(false);
   const [overagePrompt, setOveragePrompt] = useState<OverageCapPayload | null>(null);
   const [pendingMessages, setPendingMessages] = useState<ChatMessage[] | null>(null);
+  const [analysisMode, setAnalysisMode] = useState<"checklist" | "uiux">("checklist");
 
   const requestId = useMemo(() => {
     // One id per page load; used for idempotent credit reservation server-side.
@@ -247,6 +339,7 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
         },
         body: JSON.stringify({
           requestId,
+          mode: analysisMode,
           messages: nextMessages.map(({ role, content }) => ({ role, content })),
         }),
         signal: controller.signal,
@@ -509,93 +602,114 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
         message.html ||
         ((message.raw as { html?: string } | undefined)?.html ?? "") ||
         "";
+      const reportText = message.reportText || parseCsvChecklistToText(message.csv);
+      const summary = computeSummaryFromText(reportText);
+      const sections = splitReportSections(reportText);
       return (
         <div
           key={message.id}
           className={`flex ${isAssistant ? "justify-start" : "justify-end"}`}
         >
-          <div className="max-w-full space-y-3 rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.88)] p-3 text-sm shadow-[var(--shadow-sm)] md:max-w-3xl">
-            <div className="text-xs font-semibold uppercase tracking-wide text-[color:rgba(11,18,32,0.72)]">
-              Result
-            </div>
-            <div className="text-sm font-medium text-[color:rgba(11,18,32,0.92)]">
-              {message.content}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => {
-                  const blob = new Blob([message.csv as string], {
-                    type: "text/csv",
-                  });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `checklist_${Date.now()}.csv`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                className="h-8 rounded-lg bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-3 text-xs font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.22)] hover:brightness-[1.02]"
-              >
-                📄 Download CSV
-              </button>
-              <button
-                onClick={() => {
-                  if (!message.raw) return;
-                  const blob = new Blob(
-                    [JSON.stringify(message.raw, null, 2)],
-                    {
-                      type: "application/json",
-                    },
-                  );
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `analysis_${Date.now()}.json`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                disabled={!message.raw}
-                className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.85)] px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-[color:rgba(255,255,255,0.95)]"
-              >
-                📊 Download JSON
-              </button>
-              <button
-                onClick={() => {
-                  if (!html) return;
-                  const blob = new Blob([html], { type: "text/html" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `page_copy_${Date.now()}.html`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                disabled={!html}
-                className="h-8 rounded-lg border border-[color:rgba(97,106,243,0.22)] bg-[color:rgba(97,106,243,0.10)] px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-[color:rgba(97,106,243,0.14)]"
-              >
-                🌐 Download HTML
-              </button>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-1">
-                <h3 className="text-xs font-semibold text-[color:rgba(11,18,32,0.72)]">
-                  CSV Checklist (preview)
-                </h3>
-                <pre className="max-h-64 overflow-auto rounded-lg border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.92)] p-2 text-[11px] text-[color:rgba(11,18,32,0.86)]">
-                  {(message.csv as string).slice(0, 4000)}
-                </pre>
+          <div className="max-w-full space-y-3 rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.92)] p-3 text-sm shadow-[var(--shadow-sm)] md:max-w-3xl">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-wide text-[color:rgba(11,18,32,0.72)]">
+                  QA report
+                </div>
+                <div className="mt-1 truncate text-sm font-semibold text-[color:rgba(11,18,32,0.92)]">
+                  {message.content}
+                </div>
               </div>
-              <div className="space-y-1">
-                <h3 className="text-xs font-semibold text-[color:rgba(11,18,32,0.72)]">
-                  Raw Page Analysis (JSON snapshot)
-                </h3>
-                <pre className="max-h-64 overflow-auto rounded-lg border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.92)] p-2 text-[11px] text-[color:rgba(11,18,32,0.86)]">
-                  {message.raw
-                    ? JSON.stringify(message.raw, null, 2).slice(0, 4000)
-                    : "JSON snapshot was not stored (too large)."}
-                </pre>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <span className="rounded-full border border-[color:rgba(239,68,68,0.22)] bg-[color:rgba(239,68,68,0.08)] px-2 py-0.5 text-[11px] font-semibold text-[color:rgba(185,28,28,0.95)]">
+                  Critical {summary.critical}
+                </span>
+                <span className="rounded-full border border-[color:rgba(251,191,36,0.26)] bg-[color:rgba(251,191,36,0.10)] px-2 py-0.5 text-[11px] font-semibold text-[color:rgba(146,64,14,0.95)]">
+                  Medium {summary.medium}
+                </span>
+                <span className="rounded-full border border-[color:rgba(34,197,94,0.22)] bg-[color:rgba(34,197,94,0.10)] px-2 py-0.5 text-[11px] font-semibold text-[color:rgba(21,128,61,0.95)]">
+                  Minor {summary.minor}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {sections.map((s, idx) => (
+                <details
+                  key={`${s.title}-${idx}`}
+                  className="group rounded-xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)]"
+                  open={idx === 0}
+                >
+                  <summary className="cursor-pointer list-none px-3 py-2 text-xs font-semibold text-[color:rgba(11,18,32,0.82)]">
+                    <span className="mr-2 inline-block rounded-md border border-[color:rgba(15,23,42,0.10)] bg-white/70 px-1.5 py-0.5 text-[10px] text-[color:rgba(11,18,32,0.62)]">
+                      {idx === 0 ? "Summary" : "Section"}
+                    </span>
+                    {s.title}
+                  </summary>
+                  <div className="px-3 pb-3">
+                    <pre className="whitespace-pre-wrap text-[12px] leading-relaxed text-[color:rgba(11,18,32,0.84)]">
+                      {s.body}
+                    </pre>
+                  </div>
+                </details>
+              ))}
+            </div>
+
+            <div className="rounded-xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.75)] p-3">
+              <div className="text-xs font-semibold text-[color:rgba(11,18,32,0.74)]">
+                Export
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  onClick={() => {
+                    const blob = new Blob([message.csv as string], {
+                      type: "text/csv",
+                    });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `checklist_${Date.now()}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/85 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-white"
+                >
+                  Download CSV
+                </button>
+                <button
+                  onClick={() => {
+                    if (!message.raw) return;
+                    const blob = new Blob([JSON.stringify(message.raw, null, 2)], {
+                      type: "application/json",
+                    });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `analysis_${Date.now()}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  disabled={!message.raw}
+                  className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/85 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-white disabled:opacity-60"
+                >
+                  Download JSON
+                </button>
+                <button
+                  onClick={() => {
+                    if (!html) return;
+                    const blob = new Blob([html], { type: "text/html" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `page_copy_${Date.now()}.html`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  disabled={!html}
+                  className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/85 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-white disabled:opacity-60"
+                >
+                  Download HTML
+                </button>
               </div>
             </div>
           </div>
@@ -711,26 +825,64 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="mt-1 flex items-end gap-2">
-            <div className="flex-1">
-              <textarea
-                rows={2}
-                className="w-full resize-none rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.95)] px-3 py-2 text-sm text-[color:rgba(11,18,32,0.9)] outline-none ring-0 placeholder:text-[color:rgba(11,18,32,0.45)] focus:border-[color:rgba(97,106,243,0.55)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.14)]"
-                placeholder="Send a URL or instruction, e.g. “Проаналізуй snoopgame.com і зроби чекліст для всіх форм, кнопок і навігації”."
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-              />
-              <p className="mt-1 text-[11px] text-[color:rgba(11,18,32,0.60)]">
-                Tip: you can just paste a domain like <code>snoopgame.com</code>{" "}
-                – the assistant will normalize it to https:// and open in
-                browser.
-              </p>
+          <form onSubmit={handleSubmit} className="mt-1 flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-xs font-semibold text-[color:rgba(11,18,32,0.72)]">
+                Analyze as:
+              </div>
+              <div className="inline-flex overflow-hidden rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.85)]">
+                <button
+                  type="button"
+                  onClick={() => setAnalysisMode("checklist")}
+                  className={[
+                    "h-8 px-3 text-xs font-semibold transition",
+                    analysisMode === "checklist"
+                      ? "bg-[color:rgba(97,106,243,0.14)] text-[color:rgba(11,18,32,0.92)]"
+                      : "text-[color:rgba(11,18,32,0.72)] hover:bg-[color:rgba(15,23,42,0.04)]",
+                  ].join(" ")}
+                >
+                  QA checklist
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAnalysisMode("uiux")}
+                  className={[
+                    "h-8 px-3 text-xs font-semibold transition",
+                    analysisMode === "uiux"
+                      ? "bg-[color:rgba(97,106,243,0.14)] text-[color:rgba(11,18,32,0.92)]"
+                      : "text-[color:rgba(11,18,32,0.72)] hover:bg-[color:rgba(15,23,42,0.04)]",
+                  ].join(" ")}
+                >
+                  UI/UX audit
+                </button>
+              </div>
+              <div className="text-[11px] text-[color:rgba(11,18,32,0.58)]">
+                (UI/UX audit is coming soon — for now it runs the checklist engine.)
+              </div>
+            </div>
+
+            <div className="rounded-[var(--radius)] border border-[color:rgba(97,106,243,0.25)] bg-[color:rgba(97,106,243,0.06)] p-3">
+              <div className="text-xs font-semibold text-[color:rgba(11,18,32,0.80)]">
+                Paste 1+ URLs (one per line)
+              </div>
+              <div className="mt-2">
+                <textarea
+                  rows={3}
+                  className="w-full resize-none rounded-xl border border-[color:rgba(97,106,243,0.28)] bg-[color:rgba(255,255,255,0.98)] px-3 py-2 text-sm text-[color:rgba(11,18,32,0.92)] outline-none placeholder:text-[color:rgba(11,18,32,0.45)] focus:border-[color:rgba(97,106,243,0.65)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.16)]"
+                  placeholder={"https://snoopgame.com\\nhttps://langfuse.com"}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                />
+              </div>
+              <div className="mt-2 text-[11px] text-[color:rgba(11,18,32,0.60)]">
+                Tip: you can paste domains too (we’ll normalize to https).
+              </div>
             </div>
             {isLoading ? (
               <button
                 type="button"
                 onClick={handleStop}
-                className="h-10 rounded-xl bg-[color:rgba(239,68,68,0.92)] px-4 text-sm font-medium text-white hover:bg-[color:rgba(239,68,68,0.82)]"
+                className="h-10 self-end rounded-xl bg-[color:rgba(239,68,68,0.92)] px-4 text-sm font-medium text-white hover:bg-[color:rgba(239,68,68,0.82)]"
               >
                 Stop
               </button>
@@ -738,9 +890,9 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
               <button
                 type="submit"
                 disabled={!input.trim()}
-                className="h-10 rounded-xl bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-4 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.28)] hover:brightness-[1.02] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
+                className="h-10 self-end rounded-xl bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.28)] hover:brightness-[1.02] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
               >
-                Send
+                Analyze
               </button>
             )}
           </form>
