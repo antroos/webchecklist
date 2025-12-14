@@ -230,23 +230,10 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
 
       if (!chatId) {
         setActiveChatId(null);
-        try {
-          // #region agent log
-          wmdbg("H-A", "web/src/app/app/AppClient.tsx:ensure", "ensure.createChat.noChatId", {});
-          // #endregion agent log
-          const res = await fetch("/api/chats", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-          });
-          if (!res.ok) return;
-          const data = (await res.json()) as { chatId?: string };
-          if (!data.chatId) return;
-          if (!cancelled) {
-            router.replace(`/app?chatId=${encodeURIComponent(data.chatId)}`);
-          }
-        } catch {
-          // ignore
-        }
+        // #region agent log
+        // New chats should be created only via explicit user action ("New" button).
+        wmdbg("H-A", "web/src/app/app/AppClient.tsx:ensure", "ensure.noChatId.noAutoCreate", {});
+        // #endregion agent log
         return;
       }
 
@@ -286,6 +273,10 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
+    if (!activeChatId) {
+      setError("Select a chat on the left, or click New to create one.");
+      return;
+    }
 
     setError(null);
     setNeedsUpgrade(false);
@@ -304,14 +295,12 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
     setInput("");
     setIsLoading(true);
 
-    if (activeChatId) {
-      void persistMessage({
-        chatId: activeChatId,
-        role: "user",
-        kind: "plain",
-        content: userMessage.content,
-      });
-    }
+    void persistMessage({
+      chatId: activeChatId,
+      role: "user",
+      kind: "plain",
+      content: userMessage.content,
+    });
 
     const controller = new AbortController();
     setAbortController(controller);

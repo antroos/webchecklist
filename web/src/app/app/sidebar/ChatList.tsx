@@ -48,8 +48,10 @@ export default function ChatList() {
           lastMessagePreview: typeof c.lastMessagePreview === "string" ? c.lastMessagePreview : null,
         })),
       );
+      return chats.map((c) => ({ id: String(c.id) }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load chats");
+      return null;
     } finally {
       setLoading(false);
     }
@@ -114,9 +116,11 @@ export default function ChatList() {
         const t = await res.text().catch(() => "");
         throw new Error(`Delete failed: HTTP ${res.status} ${t}`);
       }
-      await refresh();
+      const next = await refresh();
       if (activeChatId && activeChatId === chatId) {
-        router.push(basePath);
+        const first = Array.isArray(next) && next.length > 0 ? next[0] : null;
+        if (first?.id) router.push(`${basePath}?chatId=${encodeURIComponent(first.id)}`);
+        else router.push(basePath);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
@@ -269,11 +273,11 @@ export default function ChatList() {
               )}
 
               {isConfirmingDelete && (
-                <div className="absolute right-1 top-8 z-10 w-56 overflow-hidden rounded-xl border border-[color:rgba(239,68,68,0.22)] bg-[color:rgba(255,255,255,0.98)] shadow-[var(--shadow)]">
-                  <div className="px-3 py-2 text-[12px] text-[color:rgba(11,18,32,0.82)]">
+                <div className="mt-2 rounded-xl border border-[color:rgba(239,68,68,0.22)] bg-[color:rgba(255,255,255,0.90)] p-2">
+                  <div className="text-[12px] leading-snug text-[color:rgba(11,18,32,0.82)]">
                     Delete this chat forever? This cannot be undone.
                   </div>
-                  <div className="flex gap-2 border-t border-[color:rgba(15,23,42,0.10)] px-3 py-2">
+                  <div className="mt-2 flex gap-2">
                     <button
                       type="button"
                       disabled={isDeleting}
