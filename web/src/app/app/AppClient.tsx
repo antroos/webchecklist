@@ -92,6 +92,29 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
       : `rid-${Date.now()}-${Math.random()}`;
   }, []);
 
+  const wmdbg = useMemo(() => {
+    const endpoint =
+      "http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f";
+    return (hypothesisId: string, location: string, message: string, data: unknown) => {
+      if (typeof window === "undefined") return;
+      const host = window.location.hostname;
+      if (host !== "localhost" && host !== "127.0.0.1") return;
+      fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "debug-session",
+          runId: "run1",
+          hypothesisId,
+          location,
+          message,
+          data,
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    };
+  }, []);
+
   async function persistMessage(params: {
     chatId: string;
     role: "user" | "assistant";
@@ -100,6 +123,16 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
     artifacts?: { csv?: string; raw?: unknown; html?: string };
   }) {
     try {
+      // #region agent log
+      wmdbg("H-C", "web/src/app/app/AppClient.tsx:persistMessage", "persistMessage.call", {
+        chatIdTail: String(params.chatId).slice(-6),
+        role: params.role,
+        kind: params.kind,
+        contentLen: params.content?.length ?? 0,
+        hasArtifacts: Boolean(params.artifacts),
+      });
+      // #endregion agent log
+
       await fetch(`/api/chats/${encodeURIComponent(params.chatId)}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -118,6 +151,13 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
   async function loadChat(chatId: string) {
     try {
       const res = await fetch(`/api/chats/${encodeURIComponent(chatId)}/messages`);
+      // #region agent log
+      wmdbg("H-B", "web/src/app/app/AppClient.tsx:loadChat", "loadChat.response", {
+        chatIdTail: String(chatId).slice(-6),
+        ok: res.ok,
+        status: res.status,
+      });
+      // #endregion agent log
       if (!res.ok) return false;
       const data = (await res.json()) as { messages?: any[] };
       const list = Array.isArray(data.messages) ? data.messages : [];
@@ -181,9 +221,19 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
     let cancelled = false;
 
     async function ensure() {
+      // #region agent log
+      wmdbg("H-A", "web/src/app/app/AppClient.tsx:ensure", "ensure.entry", {
+        propChatId: chatId,
+        propChatIdTail: chatId ? String(chatId).slice(-6) : null,
+      });
+      // #endregion agent log
+
       if (!chatId) {
         setActiveChatId(null);
         try {
+          // #region agent log
+          wmdbg("H-A", "web/src/app/app/AppClient.tsx:ensure", "ensure.createChat.noChatId", {});
+          // #endregion agent log
           const res = await fetch("/api/chats", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -205,6 +255,11 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
       if (!ok) {
         // Fallback: if chat does not exist (or access denied), create a new one.
         try {
+          // #region agent log
+          wmdbg("H-B", "web/src/app/app/AppClient.tsx:ensure", "ensure.createChat.loadChatFailed", {
+            chatIdTail: String(chatId).slice(-6),
+          });
+          // #endregion agent log
           const res = await fetch("/api/chats", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
