@@ -109,6 +109,34 @@ function chatMessagesRef(userId: string, chatId: string) {
   return userChatsRef(userId).doc(chatId).collection("messages");
 }
 
+function extractFirstUrl(text: string): string | null {
+  const s = (text || "").trim();
+  if (!s) return null;
+  // Basic URL matcher: accept http(s) or bare domain.
+  const m =
+    s.match(/\bhttps?:\/\/[^\s)]+/i) ||
+    s.match(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s)]*)?/i);
+  return m ? m[0] : null;
+}
+
+function makeTitleFromContent(text: string): { title: string; siteUrl?: string | null } | null {
+  const url = extractFirstUrl(text);
+  if (url) {
+    try {
+      const normalized = url.startsWith("http") ? url : `https://${url}`;
+      const u = new URL(normalized);
+      const host = u.hostname.replace(/^www\./, "");
+      return { title: host || "New chat", siteUrl: normalized };
+    } catch {
+      // fall through
+    }
+    const clean = url.replace(/^https?:\/\//, "").replace(/^www\./, "");
+    return { title: clean.slice(0, 48), siteUrl: url.startsWith("http") ? url : `https://${url}` };
+  }
+  const preview = safePreview(text, 48);
+  return preview ? { title: preview } : null;
+}
+
 export async function listChats(userId: string) {
   const snap = await userChatsRef(userId).orderBy("updatedAt", "desc").limit(50).get();
   return snap.docs.map((d) => ({
@@ -218,6 +246,45 @@ export async function updateChatMeta(params: {
       } satisfies Partial<ChatDoc>,
       { merge: true },
     );
+}
+
+export async function maybeSetChatTitleFromFirstUserMessage(params: {
+  userId: string;
+  chatId: string;
+  userMessage: string;
+}) {
+  const ref = userChatsRef(params.userId).doc(params.chatId);
+  const snap = await ref.get();
+  if (!snap.exists) return;
+  const currentTitle = (snap.get("title") as string | undefined) ?? "New chat";
+  if (currentTitle && currentTitle !== "New chat") return;
+  const meta = makeTitleFromContent(params.userMessage);
+  if (!meta?.title) return;
+  await updateChatMeta({
+    userId: params.userId,
+    chatId: params.chatId,
+    title: meta.title,
+    siteUrl: typeof meta.siteUrl === "string" ? meta.siteUrl : undefined,
+  });
+}
+
+export async function deleteChat(params: { userId: string; chatId: string }) {
+  const db = getAdminDb();
+  const ref = userChatsRef(params.userId).doc(params.chatId);
+
+  // Prefer recursive delete if available (admin SDK).
+  const anyDb = db as any;
+  if (typeof anyDb.recursiveDelete === "function") {
+    await anyDb.recursiveDelete(ref);
+    return;
+  }
+
+  // Fallback: best-effort delete up to a reasonable number of messages.
+  const msgs = await ref.collection("messages").limit(1000).get();
+  const batch = db.batch();
+  msgs.docs.forEach((d) => batch.delete(d.ref));
+  batch.delete(ref);
+  await batch.commit();
 }
 
 

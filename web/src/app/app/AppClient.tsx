@@ -627,8 +627,7 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-[color:var(--bg)] text-[color:var(--text)]">
-      <div className="m-auto flex h-[90vh] w-full max-w-5xl flex-col rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 shadow-[var(--shadow)]">
+    <div className="flex h-full w-full min-w-0 flex-col rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 shadow-[var(--shadow)]">
         <header className="mb-3 flex items-center justify-between gap-3 border-b border-[color:rgba(15,23,42,0.08)] pb-2">
           <div>
             <h1 className="text-lg font-semibold">WebMorpher</h1>
@@ -656,7 +655,7 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
           </div>
         </header>
 
-        <main className="flex flex-1 flex-col gap-3 overflow-hidden">
+        <main className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
           <div className="flex-1 space-y-2 overflow-y-auto rounded-[var(--radius-sm)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)] p-3">
             {messages.map((m) => renderMessage(m))}
             {isLoading && (
@@ -746,7 +745,6 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
             )}
           </form>
         </main>
-      </div>
     </div>
   );
 }

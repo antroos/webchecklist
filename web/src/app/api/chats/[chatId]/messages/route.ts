@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { auth } from "@/auth";
-import { appendMessage, listMessages } from "@/lib/chatStore";
+import { appendMessage, listMessages, maybeSetChatTitleFromFirstUserMessage } from "@/lib/chatStore";
 
 export const runtime = "nodejs";
 
@@ -49,6 +49,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ chatId: st
     content,
     artifacts: body.artifacts,
   });
+
+  if (role === "user" && kind === "plain") {
+    // Best-effort: if chat is still the default title, rename it based on the first user message.
+    void maybeSetChatTitleFromFirstUserMessage({
+      userId,
+      chatId,
+      userMessage: content,
+    });
+  }
 
   return NextResponse.json({ ok: true, messageId });
 }
