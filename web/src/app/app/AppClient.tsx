@@ -47,16 +47,46 @@ function parseCsvChecklistToText(csv: string): { title: string; items: string[];
     .map((l) => l.trim())
     .filter(Boolean);
   if (!lines.length) return { title: "QA checklist", items: [], text: "" };
-  // Skip header if present
-  const start = lines[0].toLowerCase().startsWith("check,") ? 1 : 0;
+
+  function parseFirstCsvField(line: string): string {
+    const s = (line || "").trim();
+    if (!s) return "";
+
+    // Quoted CSV field: "a, b" (supports escaped quotes: "")
+    if (s.startsWith("\"")) {
+      let out = "";
+      let i = 1;
+      while (i < s.length) {
+        const ch = s[i];
+        if (ch === "\"") {
+          if (s[i + 1] === "\"") {
+            out += "\"";
+            i += 2;
+            continue;
+          }
+          break; // closing quote
+        }
+        out += ch;
+        i += 1;
+      }
+      return out.trim();
+    }
+
+    // Unquoted field: read until first comma.
+    const comma = s.indexOf(",");
+    const field = comma === -1 ? s : s.slice(0, comma);
+    return field.trim().replace(/^"|"$/g, "");
+  }
+
+  // Skip header if present (first column == "check")
+  const firstField = parseFirstCsvField(lines[0]).toLowerCase().replace(/^\uFEFF/, "");
+  const start = firstField === "check" ? 1 : 0;
+
   const checks: string[] = [];
   for (const line of lines.slice(start)) {
-    // CSV row starts with "Check description",...
-    const m = line.match(/^"([^"]+)"/);
-    const check = (m?.[1] ?? "").trim();
+    const check = parseFirstCsvField(line);
     if (check) checks.push(check);
   }
-  if (!checks.length) return { title: "QA checklist", items: [], text: "" };
 
   const text = checks.map((c) => `- ${c}`).join("\n");
   return { title: "QA checklist", items: checks, text };
