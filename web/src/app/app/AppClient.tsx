@@ -11,6 +11,8 @@ type ChatMessage = {
   kind?: "status" | "result" | "plain";
   csv?: string;
   raw?: unknown;
+  html?: string;
+  reportText?: string; // human-friendly rendering for in-app report (derived from csv)
 };
 
 // SSE event types from /api/agent
@@ -39,10 +41,62 @@ function centsToDollars(cents: number) {
   return Math.round(cents) / 100;
 }
 
-export default function AppClient() {
+function parseCsvChecklistToText(csv: string): { title: string; items: string[]; text: string } {
+  const lines = csv
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (!lines.length) return { title: "QA checklist", items: [], text: "" };
+
+  function parseFirstCsvField(line: string): string {
+    const s = (line || "").trim();
+    if (!s) return "";
+
+    // Quoted CSV field: "a, b" (supports escaped quotes: "")
+    if (s.startsWith("\"")) {
+      let out = "";
+      let i = 1;
+      while (i < s.length) {
+        const ch = s[i];
+        if (ch === "\"") {
+          if (s[i + 1] === "\"") {
+            out += "\"";
+            i += 2;
+            continue;
+          }
+          break; // closing quote
+        }
+        out += ch;
+        i += 1;
+      }
+      return out.trim();
+    }
+
+    // Unquoted field: read until first comma.
+    const comma = s.indexOf(",");
+    const field = comma === -1 ? s : s.slice(0, comma);
+    return field.trim().replace(/^"|"$/g, "");
+  }
+
+  // Skip header if present (first column == "check")
+  const firstField = parseFirstCsvField(lines[0]).toLowerCase().replace(/^\uFEFF/, "");
+  const start = firstField === "check" ? 1 : 0;
+
+  const checks: string[] = [];
+  for (const line of lines.slice(start)) {
+    const check = parseFirstCsvField(line);
+    if (check) checks.push(check);
+  }
+
+  const text = checks.map((c) => `- ${c}`).join("\n");
+  return { title: "QA checklist", items: checks, text };
+}
+
+export default function AppClient({ chatId }: { chatId: string | null }) {
   const router = useRouter();
   const [credits, setCredits] = useState<number | null>(null);
   const [billing, setBilling] = useState<BillingStatusMini | null>(null);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome",
@@ -60,6 +114,7 @@ export default function AppClient() {
   const [needsUpgrade, setNeedsUpgrade] = useState(false);
   const [overagePrompt, setOveragePrompt] = useState<OverageCapPayload | null>(null);
   const [pendingMessages, setPendingMessages] = useState<ChatMessage[] | null>(null);
+  const [creatingChat, setCreatingChat] = useState(false);
 
   const requestId = useMemo(() => {
     // One id per page load; used for idempotent credit reservation server-side.
@@ -67,6 +122,92 @@ export default function AppClient() {
       ? crypto.randomUUID()
       : `rid-${Date.now()}-${Math.random()}`;
   }, []);
+
+  const wmdbg = useMemo(() => {
+    const endpoint =
+      "http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f";
+    return (hypothesisId: string, location: string, message: string, data: unknown) => {
+      if (typeof window === "undefined") return;
+      const host = window.location.hostname;
+      if (host !== "localhost" && host !== "127.0.0.1") return;
+      fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "debug-session",
+          runId: "run1",
+          hypothesisId,
+          location,
+          message,
+          data,
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    };
+  }, []);
+
+  async function persistMessage(params: {
+    chatId: string;
+    role: "user" | "assistant";
+    kind: "status" | "result" | "plain";
+    content: string;
+    artifacts?: { csv?: string; raw?: unknown; html?: string };
+  }) {
+    try {
+      // #region agent log
+      wmdbg("H-C", "web/src/app/app/AppClient.tsx:persistMessage", "persistMessage.call", {
+        chatIdTail: String(params.chatId).slice(-6),
+        role: params.role,
+        kind: params.kind,
+        contentLen: params.content?.length ?? 0,
+        hasArtifacts: Boolean(params.artifacts),
+      });
+      // #endregion agent log
+
+      await fetch(`/api/chats/${encodeURIComponent(params.chatId)}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: params.role,
+          kind: params.kind,
+          content: params.content,
+          artifacts: params.artifacts,
+        }),
+      });
+    } catch {
+      // ignore (MVP: keep UX working even if persistence fails)
+    }
+  }
+
+  async function loadChat(chatId: string) {
+    try {
+      const res = await fetch(`/api/chats/${encodeURIComponent(chatId)}/messages`);
+      // #region agent log
+      wmdbg("H-B", "web/src/app/app/AppClient.tsx:loadChat", "loadChat.response", {
+        chatIdTail: String(chatId).slice(-6),
+        ok: res.ok,
+        status: res.status,
+      });
+      // #endregion agent log
+      if (!res.ok) return false;
+      const data = (await res.json()) as { messages?: any[] };
+      const list = Array.isArray(data.messages) ? data.messages : [];
+      setMessages(
+        list.map((m) => ({
+          id: String(m.id ?? `m-${Math.random()}`),
+          role: m.role === "user" ? "user" : "assistant",
+          kind: m.kind === "status" || m.kind === "result" || m.kind === "plain" ? m.kind : "plain",
+          content: typeof m.content === "string" ? m.content : "",
+          csv: typeof m.artifacts?.csv === "string" ? m.artifacts.csv : undefined,
+          raw: typeof m.artifacts?.raw !== "undefined" ? m.artifacts.raw : undefined,
+          html: typeof m.artifacts?.html === "string" ? m.artifacts.html : undefined,
+        })),
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   async function refreshHeaderStats() {
     try {
@@ -107,9 +248,90 @@ export default function AppClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function ensure() {
+      // #region agent log
+      wmdbg("H-A", "web/src/app/app/AppClient.tsx:ensure", "ensure.entry", {
+        propChatId: chatId,
+        propChatIdTail: chatId ? String(chatId).slice(-6) : null,
+      });
+      // #endregion agent log
+
+      if (!chatId) {
+        setActiveChatId(null);
+        // #region agent log
+        // New chats should be created only via explicit user action ("New" button).
+        wmdbg("H-A", "web/src/app/app/AppClient.tsx:ensure", "ensure.noChatId.noAutoCreate", {});
+        // #endregion agent log
+        return;
+      }
+
+      setActiveChatId(chatId);
+      const ok = await loadChat(chatId);
+      if (!ok) {
+        // Fallback: if chat does not exist (or access denied), create a new one.
+        try {
+          // #region agent log
+          wmdbg("H-B", "web/src/app/app/AppClient.tsx:ensure", "ensure.createChat.loadChatFailed", {
+            chatIdTail: String(chatId).slice(-6),
+          });
+          // #endregion agent log
+          const res = await fetch("/api/chats", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+          if (!res.ok) return;
+          const data = (await res.json()) as { chatId?: string };
+          if (!data.chatId) return;
+          if (!cancelled) {
+            router.replace(`/app?chatId=${encodeURIComponent(data.chatId)}`);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    void ensure();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId, router]);
+
+  async function createChatFromWorkspace() {
+    if (creatingChat) return;
+    setError(null);
+    setCreatingChat(true);
+    try {
+      const res = await fetch("/api/chats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(`Failed to create chat: HTTP ${res.status} ${t}`);
+      }
+      const data = (await res.json()) as { chatId?: string };
+      const id = typeof data.chatId === "string" ? data.chatId : "";
+      if (!id) throw new Error("Missing chatId");
+      router.replace(`/app?chatId=${encodeURIComponent(id)}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create chat");
+    } finally {
+      setCreatingChat(false);
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
+    if (!activeChatId) {
+      setError("Create a chat first (tap New chat), then paste URLs and press Analyze.");
+      return;
+    }
 
     setError(null);
     setNeedsUpgrade(false);
@@ -127,6 +349,13 @@ export default function AppClient() {
     setMessages(nextMessages);
     setInput("");
     setIsLoading(true);
+
+    void persistMessage({
+      chatId: activeChatId,
+      role: "user",
+      kind: "plain",
+      content: userMessage.content,
+    });
 
     const controller = new AbortController();
     setAbortController(controller);
@@ -189,41 +418,63 @@ export default function AppClient() {
             const event = JSON.parse(jsonStr) as SSEEvent;
 
             if (event.type === "log") {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `log-${Date.now()}-${Math.random()}`,
+              const msg: ChatMessage = {
+                id: `log-${Date.now()}-${Math.random()}`,
+                role: "assistant",
+                kind: "status",
+                content: event.message,
+              };
+              setMessages((prev) => [...prev, msg]);
+              if (activeChatId) {
+                void persistMessage({
+                  chatId: activeChatId,
                   role: "assistant",
                   kind: "status",
-                  content: event.message,
-                },
-              ]);
+                  content: msg.content,
+                });
+              }
             } else if (event.type === "result") {
               // Credits were reserved server-side; refresh after the run.
               void refreshHeaderStats();
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `result-${Date.now()}`,
+              const rawAny = event.raw as any;
+              const html = typeof rawAny?.html === "string" ? rawAny.html : undefined;
+              const msg: ChatMessage = {
+                id: `result-${Date.now()}`,
+                role: "assistant",
+                kind: "result",
+                content: `Checklist for ${event.url}`,
+                csv: event.csv,
+                raw: event.raw,
+                html,
+              };
+              setMessages((prev) => [...prev, msg]);
+              if (activeChatId) {
+                void persistMessage({
+                  chatId: activeChatId,
                   role: "assistant",
                   kind: "result",
-                  content: `Checklist for ${event.url}`,
-                  csv: event.csv,
-                  raw: event.raw,
-                },
-              ]);
+                  content: msg.content,
+                  artifacts: { csv: msg.csv, raw: msg.raw, html: msg.html },
+                });
+              }
             } else if (event.type === "error") {
               setError(event.message);
               void refreshHeaderStats();
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `err-${Date.now()}`,
+              const msg: ChatMessage = {
+                id: `err-${Date.now()}`,
+                role: "assistant",
+                kind: "plain",
+                content: event.message,
+              };
+              setMessages((prev) => [...prev, msg]);
+              if (activeChatId) {
+                void persistMessage({
+                  chatId: activeChatId,
                   role: "assistant",
                   kind: "plain",
-                  content: event.message,
-                },
-              ]);
+                  content: msg.content,
+                });
+              }
             }
           } catch (parseErr) {
             console.warn("Failed to parse SSE event:", line, parseErr);
@@ -333,17 +584,27 @@ export default function AppClient() {
               ]);
             } else if (event.type === "result") {
               void refreshHeaderStats();
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `result-${Date.now()}`,
+              const rawAny = event.raw as any;
+              const html = typeof rawAny?.html === "string" ? rawAny.html : undefined;
+              const msg: ChatMessage = {
+                id: `result-${Date.now()}`,
+                role: "assistant",
+                kind: "result",
+                content: `Checklist for ${event.url}`,
+                csv: event.csv,
+                raw: event.raw,
+                html,
+              };
+              setMessages((prev) => [...prev, msg]);
+              if (activeChatId) {
+                void persistMessage({
+                  chatId: activeChatId,
                   role: "assistant",
                   kind: "result",
-                  content: `Checklist for ${event.url}`,
-                  csv: event.csv,
-                  raw: event.raw,
-                },
-              ]);
+                  content: msg.content,
+                  artifacts: { csv: msg.csv, raw: msg.raw, html: msg.html },
+                });
+              }
             } else if (event.type === "error") {
               setError(event.message);
               void refreshHeaderStats();
@@ -374,90 +635,78 @@ export default function AppClient() {
   function renderMessage(message: ChatMessage) {
     const isAssistant = message.role === "assistant";
 
-    if (message.kind === "result" && message.csv && message.raw) {
+    if (message.kind === "result" && message.csv) {
+      const html =
+        message.html ||
+        ((message.raw as { html?: string } | undefined)?.html ?? "") ||
+        "";
+      const parsed = parseCsvChecklistToText(message.csv);
+      const copyText = parsed.text || message.csv || "";
       return (
         <div
           key={message.id}
           className={`flex ${isAssistant ? "justify-start" : "justify-end"}`}
         >
-          <div className="max-w-full space-y-3 rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.88)] p-3 text-sm shadow-[var(--shadow-sm)] md:max-w-3xl">
-            <div className="text-xs font-semibold uppercase tracking-wide text-[color:rgba(11,18,32,0.72)]">
-              Result
-            </div>
-            <div className="text-sm font-medium text-[color:rgba(11,18,32,0.92)]">
-              {message.content}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => {
-                  const blob = new Blob([message.csv as string], {
-                    type: "text/csv",
-                  });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `checklist_${Date.now()}.csv`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                className="h-8 rounded-lg bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-3 text-xs font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.22)] hover:brightness-[1.02]"
-              >
-                📄 Download CSV
-              </button>
-              <button
-                onClick={() => {
-                  const blob = new Blob(
-                    [JSON.stringify(message.raw, null, 2)],
-                    {
-                      type: "application/json",
-                    },
-                  );
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `analysis_${Date.now()}.json`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.85)] px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-[color:rgba(255,255,255,0.95)]"
-              >
-                📊 Download JSON
-              </button>
-              <button
-                onClick={() => {
-                  const html =
-                    (message.raw as { html?: string } | undefined)?.html || "";
-                  const blob = new Blob([html], { type: "text/html" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `page_copy_${Date.now()}.html`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                className="h-8 rounded-lg border border-[color:rgba(97,106,243,0.22)] bg-[color:rgba(97,106,243,0.10)] px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-[color:rgba(97,106,243,0.14)]"
-              >
-                🌐 Download HTML
-              </button>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-1">
-                <h3 className="text-xs font-semibold text-[color:rgba(11,18,32,0.72)]">
-                  CSV Checklist (preview)
-                </h3>
-                <pre className="max-h-64 overflow-auto rounded-lg border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.92)] p-2 text-[11px] text-[color:rgba(11,18,32,0.86)]">
-                  {(message.csv as string).slice(0, 4000)}
-                </pre>
+          <div className="max-w-full space-y-3 rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.92)] p-3 text-sm shadow-[var(--shadow-sm)] md:max-w-3xl">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-wide text-[color:rgba(11,18,32,0.72)]">
+                  QA checklist
+                </div>
+                <div className="mt-1 truncate text-sm font-semibold text-[color:rgba(11,18,32,0.92)]">
+                  {message.content}
+                </div>
+                <div className="mt-1 text-[11px] text-[color:rgba(11,18,32,0.62)]">
+                  {parsed.items.length} checks • paste URLs above (one per line)
+                </div>
               </div>
-              <div className="space-y-1">
-                <h3 className="text-xs font-semibold text-[color:rgba(11,18,32,0.72)]">
-                  Raw Page Analysis (JSON snapshot)
-                </h3>
-                <pre className="max-h-64 overflow-auto rounded-lg border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.92)] p-2 text-[11px] text-[color:rgba(11,18,32,0.86)]">
-                  {JSON.stringify(message.raw, null, 2).slice(0, 4000)}
-                </pre>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    if (!copyText) return;
+                    await navigator.clipboard.writeText(copyText);
+                  } catch {
+                    // ignore
+                  }
+                }}
+                disabled={!copyText}
+                className="h-8 shrink-0 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/85 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-white"
+              >
+                Copy
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)] p-3">
+              <div className="text-xs font-semibold text-[color:rgba(11,18,32,0.74)]">
+                Checklist (view/copy in-app)
+              </div>
+              <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap text-[12px] leading-relaxed text-[color:rgba(11,18,32,0.84)]">
+                {parsed.text || "(empty)"}
+              </pre>
+            </div>
+
+            <div className="rounded-xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.75)] p-3">
+              <div className="text-xs font-semibold text-[color:rgba(11,18,32,0.74)]">
+                Export
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  onClick={() => {
+                    const blob = new Blob([message.csv as string], {
+                      type: "text/csv",
+                    });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `checklist_${Date.now()}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/85 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-white"
+                >
+                  Download CSV
+                </button>
               </div>
             </div>
           </div>
@@ -489,13 +738,12 @@ export default function AppClient() {
   }
 
   return (
-    <div className="flex h-full w-full min-w-0 flex-col rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 shadow-[var(--shadow)]">
+    <div className="flex min-h-0 w-full flex-1 flex-col rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 shadow-[var(--shadow)]">
       <header className="mb-3 flex flex-wrap items-start justify-between gap-3 border-b border-[color:rgba(15,23,42,0.08)] pb-2">
         <div className="min-w-0">
           <h1 className="text-lg font-semibold">WebMorpher</h1>
           <p className="text-xs text-[color:rgba(11,18,32,0.72)]">
-            Chat interface for opening real pages in a browser, analyzing
-            structure and generating CSV test checklists.
+            Chat interface for opening real pages in a browser, analyzing structure and generating CSV test checklists.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -504,8 +752,7 @@ export default function AppClient() {
           </div>
           {billing?.plan && billing.includedMonthlyLimit > 0 && (
             <div className="rounded-full border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.80)] px-3 py-1 text-[11px] font-medium text-[color:rgba(11,18,32,0.84)]">
-              Used {billing.periodIncludedUsed} · Remaining {billing.includedRemaining}/
-              {billing.includedMonthlyLimit}
+              Used {billing.periodIncludedUsed} · Remaining {billing.includedRemaining}/{billing.includedMonthlyLimit}
             </div>
           )}
           <button
@@ -529,6 +776,22 @@ export default function AppClient() {
             </div>
           )}
         </div>
+
+        {!activeChatId && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-[color:rgba(97,106,243,0.22)] bg-[color:rgba(97,106,243,0.08)] px-3 py-2">
+            <div className="text-xs text-[color:rgba(11,18,32,0.82)]">
+              No chats yet. Create one to start your first project.
+            </div>
+            <button
+              type="button"
+              onClick={createChatFromWorkspace}
+              disabled={creatingChat}
+              className="h-8 rounded-lg bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-3 text-xs font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.22)] hover:brightness-[1.02] disabled:opacity-60"
+            >
+              {creatingChat ? "Creating…" : "New chat"}
+            </button>
+          </div>
+        )}
 
         {error && (
           <div className="rounded-lg border border-[color:rgba(239,68,68,0.25)] bg-[color:rgba(239,68,68,0.08)] px-3 py-1.5 text-xs text-[color:rgba(185,28,28,0.95)]">
@@ -573,35 +836,65 @@ export default function AppClient() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="mt-1 flex items-end gap-2">
-          <div className="min-w-0 flex-1">
-            <textarea
-              rows={2}
-              className="w-full resize-none rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.95)] px-3 py-2 text-sm text-[color:rgba(11,18,32,0.9)] outline-none ring-0 placeholder:text-[color:rgba(11,18,32,0.45)] focus:border-[color:rgba(97,106,243,0.55)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.14)]"
-              placeholder="Send a URL or instruction, e.g. “Проаналізуй snoopgame.com і зроби чекліст для всіх форм, кнопок і навігації”."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-            />
-            <p className="mt-1 text-[11px] text-[color:rgba(11,18,32,0.60)]">
-              Tip: you can just paste a domain like <code>snoopgame.com</code> – the
-              assistant will normalize it to https:// and open in browser.
-            </p>
+        <form onSubmit={handleSubmit} className="mt-1 flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-xs font-semibold text-[color:rgba(11,18,32,0.72)]">
+              Analyze as:
+            </div>
+            <div className="inline-flex overflow-hidden rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.85)]">
+              <button
+                type="button"
+                aria-pressed={true}
+                className={[
+                  "h-8 px-3 text-xs font-semibold transition",
+                  "bg-[color:rgba(97,106,243,0.14)] text-[color:rgba(11,18,32,0.92)]",
+                ].join(" ")}
+              >
+                QA checklist
+              </button>
+              <button
+                type="button"
+                disabled
+                className="h-8 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.45)]"
+              >
+                UI/UX audit (soon)
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-[var(--radius)] border border-[color:rgba(97,106,243,0.25)] bg-[color:rgba(97,106,243,0.06)] p-3">
+            <div className="text-xs font-semibold text-[color:rgba(11,18,32,0.80)]">
+              Paste 1+ URLs (one per line)
+            </div>
+            <div className="mt-2">
+              <textarea
+                rows={3}
+                disabled={!activeChatId}
+                className="w-full resize-none rounded-xl border border-[color:rgba(97,106,243,0.28)] bg-[color:rgba(255,255,255,0.98)] px-3 py-2 text-sm text-[color:rgba(11,18,32,0.92)] outline-none placeholder:text-[color:rgba(11,18,32,0.45)] focus:border-[color:rgba(97,106,243,0.65)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.16)] disabled:cursor-not-allowed disabled:opacity-60"
+                placeholder={"https://snoopgame.com\nhttps://langfuse.com"}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+              />
+            </div>
+            <div className="mt-2 text-[11px] text-[color:rgba(11,18,32,0.60)]">
+              Tip: you can paste domains too (we’ll normalize to https).
+            </div>
           </div>
           {isLoading ? (
             <button
               type="button"
               onClick={handleStop}
-              className="h-10 shrink-0 rounded-xl bg-[color:rgba(239,68,68,0.92)] px-4 text-sm font-medium text-white hover:bg-[color:rgba(239,68,68,0.82)]"
+              className="h-10 self-end rounded-xl bg-[color:rgba(239,68,68,0.92)] px-4 text-sm font-medium text-white hover:bg-[color:rgba(239,68,68,0.82)]"
             >
               Stop
             </button>
           ) : (
             <button
               type="submit"
-              disabled={!input.trim()}
-              className="h-10 shrink-0 rounded-xl bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-4 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.28)] hover:brightness-[1.02] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
+              disabled={!activeChatId || !input.trim()}
+              className="h-10 self-end rounded-xl bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.28)] hover:brightness-[1.02] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
             >
-              Send
+              Analyze
             </button>
           )}
         </form>
