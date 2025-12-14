@@ -20,6 +20,8 @@ export default function ChatList() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
 
   const basePath = useMemo(() => {
     // Keep list visible only under /app routes.
@@ -77,15 +79,14 @@ export default function ChatList() {
   }
 
   async function renameChat(chatId: string) {
-    const current = items.find((x) => x.id === chatId)?.title || "Chat";
-    const next = window.prompt("Rename chat", current);
-    if (!next || !next.trim()) return;
+    const next = renameDraft.trim();
+    if (!next) return;
     setError(null);
     try {
       const res = await fetch(`/api/chats/${encodeURIComponent(chatId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: next.trim() }),
+        body: JSON.stringify({ title: next }),
       });
       if (!res.ok) {
         const t = await res.text().catch(() => "");
@@ -96,6 +97,7 @@ export default function ChatList() {
       setError(e instanceof Error ? e.message : "Rename failed");
     } finally {
       setMenuFor(null);
+      setRenamingId(null);
     }
   }
 
@@ -158,6 +160,7 @@ export default function ChatList() {
         )}
         {items.map((c) => {
           const active = activeChatId && c.id === activeChatId;
+          const isRenaming = renamingId === c.id;
           return (
             <div
               key={c.id}
@@ -168,20 +171,62 @@ export default function ChatList() {
                   : "border border-transparent hover:bg-[color:rgba(15,23,42,0.04)]",
               ].join(" ")}
             >
-              <button
-                type="button"
-                onClick={() => openChat(c.id)}
-                className="block w-full pr-8 text-left"
-              >
-                <div className="truncate text-[12px] font-semibold text-[color:rgba(11,18,32,0.86)]">
-                  {c.title || "Chat"}
-                </div>
-                {c.lastMessagePreview && (
-                  <div className="mt-0.5 truncate text-[11px] text-[color:rgba(11,18,32,0.62)]">
-                    {c.lastMessagePreview}
+              {!isRenaming ? (
+                <button
+                  type="button"
+                  onClick={() => openChat(c.id)}
+                  className="block w-full pr-8 text-left"
+                >
+                  <div className="truncate text-[12px] font-semibold text-[color:rgba(11,18,32,0.86)]">
+                    {c.title || "Chat"}
                   </div>
-                )}
-              </button>
+                  {c.lastMessagePreview && (
+                    <div className="mt-0.5 truncate text-[11px] text-[color:rgba(11,18,32,0.62)]">
+                      {c.lastMessagePreview}
+                    </div>
+                  )}
+                </button>
+              ) : (
+                <div className="pr-8">
+                  <input
+                    autoFocus
+                    value={renameDraft}
+                    onChange={(e) => setRenameDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void renameChat(c.id);
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setRenamingId(null);
+                        setMenuFor(null);
+                      }
+                    }}
+                    className="h-8 w-full rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.95)] px-2 text-[12px] text-[color:rgba(11,18,32,0.88)] outline-none focus:border-[color:rgba(97,106,243,0.55)] focus:shadow-[0_0_0_3px_rgba(97,106,243,0.14)]"
+                    placeholder="Chat title"
+                  />
+                  <div className="mt-1 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void renameChat(c.id)}
+                      disabled={!renameDraft.trim()}
+                      className="h-7 rounded-lg bg-[color:rgba(97,106,243,0.16)] px-2 text-[11px] font-semibold text-[color:rgba(11,18,32,0.86)] hover:bg-[color:rgba(97,106,243,0.22)] disabled:opacity-60"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRenamingId(null);
+                        setMenuFor(null);
+                      }}
+                      className="h-7 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/80 px-2 text-[11px] font-semibold text-[color:rgba(11,18,32,0.80)] hover:bg-white"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <button
                 type="button"
@@ -196,7 +241,11 @@ export default function ChatList() {
                 <div className="absolute right-1 top-8 z-10 w-44 overflow-hidden rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.98)] shadow-[var(--shadow)]">
                   <button
                     type="button"
-                    onClick={() => renameChat(c.id)}
+                    onClick={() => {
+                      setRenameDraft(items.find((x) => x.id === c.id)?.title || "Chat");
+                      setRenamingId(c.id);
+                      setMenuFor(null);
+                    }}
                     className="block w-full px-3 py-2 text-left text-[12px] text-[color:rgba(11,18,32,0.88)] hover:bg-[color:rgba(15,23,42,0.04)]"
                   >
                     Rename
