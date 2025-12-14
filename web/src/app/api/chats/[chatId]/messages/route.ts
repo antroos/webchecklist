@@ -104,6 +104,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ chatId: st
         kind,
         contentLen: typeof content === "string" ? content.length : -1,
         hasArtifacts: Boolean(body.artifacts),
+        hasHtml: typeof body.artifacts?.html === "string",
+        hasRaw: typeof body.artifacts?.raw !== "undefined",
         messageId: messageId ? `***${String(messageId).slice(-6)}` : null,
       },
       timestamp: Date.now(),

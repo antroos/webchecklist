@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type ChatListItem = {
   id: string;
@@ -11,7 +11,6 @@ type ChatListItem = {
 
 export default function ChatList() {
   const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const activeChatId = searchParams?.get("chatId") || "";
@@ -25,10 +24,8 @@ export default function ChatList() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const basePath = useMemo(() => {
-    // Keep list visible only under /app routes.
-    return pathname?.startsWith("/app") ? "/app" : "/app";
-  }, [pathname]);
+  // ChatList lives under /app layout; keep navigation stable.
+  const basePath = "/app";
 
   async function refresh() {
     setError(null);

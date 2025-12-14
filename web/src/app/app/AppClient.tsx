@@ -554,17 +554,27 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
               ]);
             } else if (event.type === "result") {
               void refreshHeaderStats();
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `result-${Date.now()}`,
+              const rawAny = event.raw as any;
+              const html = typeof rawAny?.html === "string" ? rawAny.html : undefined;
+              const msg: ChatMessage = {
+                id: `result-${Date.now()}`,
+                role: "assistant",
+                kind: "result",
+                content: `Checklist for ${event.url}`,
+                csv: event.csv,
+                raw: event.raw,
+                html,
+              };
+              setMessages((prev) => [...prev, msg]);
+              if (activeChatId) {
+                void persistMessage({
+                  chatId: activeChatId,
                   role: "assistant",
                   kind: "result",
-                  content: `Checklist for ${event.url}`,
-                  csv: event.csv,
-                  raw: event.raw,
-                },
-              ]);
+                  content: msg.content,
+                  artifacts: { csv: msg.csv, raw: msg.raw, html: msg.html },
+                });
+              }
             } else if (event.type === "error") {
               setError(event.message);
               void refreshHeaderStats();
