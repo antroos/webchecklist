@@ -84,6 +84,7 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
   const [needsUpgrade, setNeedsUpgrade] = useState(false);
   const [overagePrompt, setOveragePrompt] = useState<OverageCapPayload | null>(null);
   const [pendingMessages, setPendingMessages] = useState<ChatMessage[] | null>(null);
+  const [creatingChat, setCreatingChat] = useState(false);
 
   const requestId = useMemo(() => {
     // One id per page load; used for idempotent credit reservation server-side.
@@ -270,11 +271,35 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
     };
   }, [chatId, router]);
 
+  async function createChatFromWorkspace() {
+    if (creatingChat) return;
+    setError(null);
+    setCreatingChat(true);
+    try {
+      const res = await fetch("/api/chats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(`Failed to create chat: HTTP ${res.status} ${t}`);
+      }
+      const data = (await res.json()) as { chatId?: string };
+      const id = typeof data.chatId === "string" ? data.chatId : "";
+      if (!id) throw new Error("Missing chatId");
+      router.replace(`/app?chatId=${encodeURIComponent(id)}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create chat");
+    } finally {
+      setCreatingChat(false);
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
     if (!activeChatId) {
-      setError("Select a chat on the left, or click New to create one.");
+      setError("Create a chat first (tap New chat), then paste URLs and press Analyze.");
       return;
     }
 
@@ -714,6 +739,22 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
             )}
           </div>
 
+          {!activeChatId && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-[color:rgba(97,106,243,0.22)] bg-[color:rgba(97,106,243,0.08)] px-3 py-2">
+              <div className="text-xs text-[color:rgba(11,18,32,0.82)]">
+                No chats yet. Create one to start your first project.
+              </div>
+              <button
+                type="button"
+                onClick={createChatFromWorkspace}
+                disabled={creatingChat}
+                className="h-8 rounded-lg bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-3 text-xs font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.22)] hover:brightness-[1.02] disabled:opacity-60"
+              >
+                {creatingChat ? "Creating…" : "New chat"}
+              </button>
+            </div>
+          )}
+
           {error && (
             <div className="rounded-lg border border-[color:rgba(239,68,68,0.25)] bg-[color:rgba(239,68,68,0.08)] px-3 py-1.5 text-xs text-[color:rgba(185,28,28,0.95)]">
               {error}
@@ -790,7 +831,8 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
               <div className="mt-2">
                 <textarea
                   rows={3}
-                  className="w-full resize-none rounded-xl border border-[color:rgba(97,106,243,0.28)] bg-[color:rgba(255,255,255,0.98)] px-3 py-2 text-sm text-[color:rgba(11,18,32,0.92)] outline-none placeholder:text-[color:rgba(11,18,32,0.45)] focus:border-[color:rgba(97,106,243,0.65)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.16)]"
+                  disabled={!activeChatId}
+                  className="w-full resize-none rounded-xl border border-[color:rgba(97,106,243,0.28)] bg-[color:rgba(255,255,255,0.98)] px-3 py-2 text-sm text-[color:rgba(11,18,32,0.92)] outline-none placeholder:text-[color:rgba(11,18,32,0.45)] focus:border-[color:rgba(97,106,243,0.65)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.16)] disabled:cursor-not-allowed disabled:opacity-60"
                   placeholder={"https://snoopgame.com\\nhttps://langfuse.com"}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -811,7 +853,7 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
             ) : (
               <button
                 type="submit"
-                disabled={!input.trim()}
+                disabled={!activeChatId || !input.trim()}
                 className="h-10 self-end rounded-xl bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.28)] hover:brightness-[1.02] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
               >
                 Analyze
