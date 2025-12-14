@@ -22,6 +22,8 @@ export default function ChatList() {
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const basePath = useMemo(() => {
     // Keep list visible only under /app routes.
@@ -102,11 +104,8 @@ export default function ChatList() {
   }
 
   async function deleteChatById(chatId: string) {
-    const ok = window.confirm(
-      "Delete this chat forever? This action cannot be undone.",
-    );
-    if (!ok) return;
     setError(null);
+    setDeletingId(chatId);
     try {
       const res = await fetch(`/api/chats/${encodeURIComponent(chatId)}`, {
         method: "DELETE",
@@ -123,6 +122,8 @@ export default function ChatList() {
       setError(e instanceof Error ? e.message : "Delete failed");
     } finally {
       setMenuFor(null);
+      setConfirmDeleteId(null);
+      setDeletingId(null);
     }
   }
 
@@ -161,6 +162,8 @@ export default function ChatList() {
         {items.map((c) => {
           const active = activeChatId && c.id === activeChatId;
           const isRenaming = renamingId === c.id;
+          const isConfirmingDelete = confirmDeleteId === c.id;
+          const isDeleting = deletingId === c.id;
           return (
             <div
               key={c.id}
@@ -244,6 +247,7 @@ export default function ChatList() {
                     onClick={() => {
                       setRenameDraft(items.find((x) => x.id === c.id)?.title || "Chat");
                       setRenamingId(c.id);
+                      setConfirmDeleteId(null);
                       setMenuFor(null);
                     }}
                     className="block w-full px-3 py-2 text-left text-[12px] text-[color:rgba(11,18,32,0.88)] hover:bg-[color:rgba(15,23,42,0.04)]"
@@ -252,11 +256,41 @@ export default function ChatList() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => deleteChatById(c.id)}
+                    onClick={() => {
+                      setConfirmDeleteId(c.id);
+                      setRenamingId(null);
+                      setMenuFor(null);
+                    }}
                     className="block w-full px-3 py-2 text-left text-[12px] text-[color:rgba(185,28,28,0.95)] hover:bg-[color:rgba(239,68,68,0.08)]"
                   >
                     Delete…
                   </button>
+                </div>
+              )}
+
+              {isConfirmingDelete && (
+                <div className="absolute right-1 top-8 z-10 w-56 overflow-hidden rounded-xl border border-[color:rgba(239,68,68,0.22)] bg-[color:rgba(255,255,255,0.98)] shadow-[var(--shadow)]">
+                  <div className="px-3 py-2 text-[12px] text-[color:rgba(11,18,32,0.82)]">
+                    Delete this chat forever? This cannot be undone.
+                  </div>
+                  <div className="flex gap-2 border-t border-[color:rgba(15,23,42,0.10)] px-3 py-2">
+                    <button
+                      type="button"
+                      disabled={isDeleting}
+                      onClick={() => void deleteChatById(c.id)}
+                      className="h-7 flex-1 rounded-lg bg-[color:rgba(239,68,68,0.14)] px-2 text-[11px] font-semibold text-[color:rgba(185,28,28,0.95)] hover:bg-[color:rgba(239,68,68,0.18)] disabled:opacity-60"
+                    >
+                      {isDeleting ? "Deleting…" : "Delete"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isDeleting}
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="h-7 flex-1 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/80 px-2 text-[11px] font-semibold text-[color:rgba(11,18,32,0.80)] hover:bg-white disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
