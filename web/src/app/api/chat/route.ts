@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { openai } from "@ai-sdk/openai";
-import { convertToModelMessages, streamText } from "ai";
+import { convertToModelMessages, streamText, type UIMessage } from "ai";
 
 import { auth } from "@/auth";
 import { appendMessage } from "@/lib/chatStore";
@@ -10,33 +10,24 @@ export const runtime = "nodejs";
 type ReqBody = {
   chatId?: string;
   model?: string;
-  messages?: Array<{ role?: string; content?: unknown }>;
+  messages?: UIMessage[] | unknown;
   // optional future
   mode?: string;
 };
 
-function asTextContent(v: unknown): string {
-  if (typeof v === "string") return v;
-  // assistant-ui may send richer structures later; MVP: stringify safely.
-  try {
-    return JSON.stringify(v);
-  } catch {
-    return String(v ?? "");
-  }
-}
+function extractTextFromUiMessage(m: UIMessage | any): string {
+  if (!m) return "";
+  // Legacy / fallback (if any client sends {content:string})
+  if (typeof m.content === "string") return m.content;
 
-type SimpleMsg = { role: "user" | "assistant"; content: string };
-
-function toSimpleMessages(input: ReqBody["messages"]): SimpleMsg[] {
-  const arr = Array.isArray(input) ? input : [];
-  const out: SimpleMsg[] = [];
-  for (const m of arr) {
-    const role = m?.role === "assistant" ? "assistant" : "user";
-    const content = asTextContent(m?.content);
-    if (!content.trim()) continue;
-    out.push({ role, content });
+  const parts = Array.isArray(m.parts) ? m.parts : [];
+  const chunks: string[] = [];
+  for (const p of parts) {
+    if (p && p.type === "text" && typeof p.text === "string") {
+      chunks.push(p.text);
+    }
   }
-  return out;
+  return chunks.join("").trim();
 }
 
 function getBasePrompt(): string {
@@ -147,9 +138,10 @@ export async function POST(req: Request) {
   }
   // #endregion agent log
 
-  const simpleMessages = toSimpleMessages(body.messages);
-  const last = simpleMessages[simpleMessages.length - 1];
-  if (!last || last.role !== "user") {
+  const uiMessages = Array.isArray(body.messages) ? (body.messages as UIMessage[]) : [];
+  const lastUser = [...uiMessages].reverse().find((m) => (m as any)?.role === "user") as UIMessage | undefined;
+  const lastUserText = lastUser ? extractTextFromUiMessage(lastUser) : "";
+  if (!lastUser || !lastUserText) {
     return NextResponse.json({ error: "Missing user message" }, { status: 400 });
   }
 
@@ -160,14 +152,14 @@ export async function POST(req: Request) {
       chatId,
       role: "user",
       kind: "plain",
-      content: last.content,
+      content: lastUserText,
     });
   } catch {
     // ignore
   }
 
   const basePrompt = getBasePrompt();
-  const converted = convertToModelMessages(simpleMessages as any);
+  const converted = convertToModelMessages(uiMessages as any);
 
   try {
     const result = streamText({
