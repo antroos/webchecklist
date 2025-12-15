@@ -62,7 +62,7 @@ function AssistantBubble() {
 
 function Composer() {
   return (
-    <ComposerPrimitive.Root className="rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)] p-3">
+    <ComposerPrimitive.Root className="rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.92)] p-3 shadow-[0_10px_26px_rgba(15,23,42,0.08)]">
       <ComposerPrimitive.Input className="min-h-[52px] w-full resize-none rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white/90 px-3 py-2 text-sm text-[color:rgba(11,18,32,0.92)] outline-none placeholder:text-[color:rgba(11,18,32,0.45)] focus:border-[color:rgba(97,106,243,0.60)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.14)]" />
       <div className="mt-2 flex items-center justify-end gap-2">
         <ComposerPrimitive.Cancel className="hidden" />
@@ -107,7 +107,8 @@ function ChatThread({
                 data: {
                   status: res.status,
                   statusText: res.statusText,
-                  bodyPrefix: text.slice(0, 800),
+                  contentType: res.headers.get("content-type"),
+                  bodyPrefix: text.slice(0, 1200),
                   chatIdTail: chatId.slice(-6),
                   model,
                 },
@@ -139,7 +140,7 @@ function ChatThread({
           />
         </ThreadPrimitive.Viewport>
 
-        <div className="mt-3">
+        <div className="sticky bottom-0 mt-3 bg-[color:var(--card)] pt-2">
           <Composer />
         </div>
       </ThreadPrimitive.Root>

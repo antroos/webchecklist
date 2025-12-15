@@ -49,6 +49,7 @@ function getBasePrompt(): string {
 }
 
 export async function POST(req: Request) {
+  try {
   // #region agent log
   // Server-side code runs on Cloud Run, so it cannot reach the local debug ingest endpoint.
   // Keep this instrumentation gated for local debugging only.
@@ -68,6 +69,13 @@ export async function POST(req: Request) {
     }).catch(() => {});
   }
   // #endregion agent log
+
+  if (!process.env.OPENAI_API_KEY) {
+    return NextResponse.json(
+      { error: "OPENAI_API_KEY_MISSING" },
+      { status: 500 },
+    );
+  }
 
   const session = await auth();
   const userId = (session?.user as { id?: string } | undefined)?.id;
@@ -205,6 +213,13 @@ export async function POST(req: Request) {
     }
     // #endregion agent log
     return NextResponse.json({ error: "CHAT_FAILED", message: msg }, { status: 500 });
+  }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json(
+      { error: "CHAT_HANDLER_FAILED", message: msg },
+      { status: 500 },
+    );
   }
 }
 
