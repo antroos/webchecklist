@@ -10,17 +10,35 @@ export default function Home() {
             <span>WebMorpher</span>
           </Link>
           <nav className="hidden items-center gap-4 text-sm font-medium text-[color:rgba(11,18,32,0.78)] md:flex">
-            <a href="#problem" className="rounded-lg px-3 py-2 hover:bg-[color:rgba(97,106,243,0.08)]">
-              Problem
-            </a>
-            <a href="#how" className="rounded-lg px-3 py-2 hover:bg-[color:rgba(97,106,243,0.08)]">
+            <a
+              href="#how"
+              className="rounded-lg px-3 py-2 hover:bg-[color:rgba(97,106,243,0.08)]"
+            >
               How it works
             </a>
-            <a href="#get" className="rounded-lg px-3 py-2 hover:bg-[color:rgba(97,106,243,0.08)]">
+            <a
+              href="#features"
+              className="rounded-lg px-3 py-2 hover:bg-[color:rgba(97,106,243,0.08)]"
+            >
               What you get
             </a>
-            <a href="#try" className="rounded-lg border border-[color:rgba(97,106,243,0.28)] bg-[color:rgba(97,106,243,0.12)] px-3 py-2 hover:bg-[color:rgba(97,106,243,0.16)]">
-              Check my website
+            <a
+              href="#use-cases"
+              className="rounded-lg px-3 py-2 hover:bg-[color:rgba(97,106,243,0.08)]"
+            >
+              Use cases
+            </a>
+            <a
+              href="#pricing"
+              className="rounded-lg px-3 py-2 hover:bg-[color:rgba(97,106,243,0.08)]"
+            >
+              Pricing
+            </a>
+            <a
+              href="#try"
+              className="rounded-lg border border-[color:rgba(97,106,243,0.28)] bg-[color:rgba(97,106,243,0.12)] px-3 py-2 hover:bg-[color:rgba(97,106,243,0.16)]"
+            >
+              Try it
             </a>
           </nav>
           <div className="flex items-center gap-2">
@@ -45,14 +63,14 @@ export default function Home() {
           <div className="mx-auto grid w-full max-w-6xl grid-cols-1 items-start gap-10 md:grid-cols-2">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-[color:rgba(15,23,42,0.08)] bg-[color:rgba(255,255,255,0.8)] px-3 py-2 text-xs font-semibold text-[color:rgba(11,18,32,0.72)] shadow-[0_10px_30px_rgba(2,6,23,0.06)]">
-                Built alone? Make sure nothing is broken.
+                Your calm AI mentor for building and scaling.
               </div>
               <h1 className="mt-4 text-balance text-4xl font-semibold leading-[1.05] tracking-[-0.02em] md:text-5xl">
-                A second set of eyes for your website — when you don’t have a team.
+                Build your business and improve your metrics with an AI mentor.
               </h1>
               <p className="mt-4 max-w-[58ch] text-lg text-[color:rgba(11,18,32,0.78)]">
-                WebMorpher reviews your page like a careful QA Lead would and generates a practical checklist of what to
-                check.
+                Get KPI-focused audits, actionable playbooks, and weekly execution — tailored to your business context.
+                Start with a question or a URL.
               </p>
 
               <div className="mt-6 flex flex-wrap gap-3">
@@ -60,50 +78,63 @@ export default function Home() {
                   href="#try"
                   className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.22)] hover:brightness-[1.02]"
                 >
-                  Check my website
+                  Try for free
                 </a>
                 <a
-                  href="#get"
+                  href="#how"
                   className="inline-flex items-center justify-center rounded-xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.85)] px-5 py-3 text-sm font-semibold text-[color:rgba(11,18,32,0.88)] shadow-[0_12px_28px_rgba(2,6,23,0.06)] hover:bg-[color:rgba(255,255,255,0.92)]"
                 >
-                  See what you get
+                  See how it works
                 </a>
               </div>
 
-              <ul className="mt-6 list-disc pl-5 text-sm font-semibold text-[color:rgba(11,18,32,0.70)]">
-                <li>No setup</li>
-                <li>No scripts</li>
-                <li>No clicking through every page manually</li>
-              </ul>
+              <div className="mt-7 grid gap-3 rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.78)] p-4 shadow-[var(--shadow-sm)]">
+                <div className="text-xs font-semibold text-[color:rgba(11,18,32,0.72)]">
+                  What you get in 60 seconds
+                </div>
+                <ul className="grid gap-1.5 text-sm text-[color:rgba(11,18,32,0.74)]">
+                  {[
+                    "A prioritized plan (what matters now vs later)",
+                    "Key risks + assumptions to validate",
+                    "Next 5 actions with effort estimates",
+                    "Suggested KPI set to track progress",
+                  ].map((t) => (
+                    <li key={t} className="flex gap-2">
+                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:rgba(97,106,243,0.70)]" />
+                      <span>{t}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
 
             <div className="rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.78)] shadow-[var(--shadow)]">
               <div className="flex gap-2 px-4 pt-4">
                 <span className="rounded-full border border-[color:rgba(97,106,243,0.22)] bg-[color:rgba(97,106,243,0.12)] px-3 py-1 text-xs font-semibold text-[color:rgba(11,18,32,0.84)]">
-                  Output
+                  Example output
                 </span>
                 <span className="rounded-full border border-[color:rgba(15,23,42,0.08)] bg-[color:rgba(15,23,42,0.05)] px-3 py-1 text-xs font-semibold text-[color:rgba(11,18,32,0.72)]">
-                  Checklist
+                  Plan
                 </span>
                 <span className="rounded-full border border-[color:rgba(15,23,42,0.08)] bg-[color:rgba(15,23,42,0.05)] px-3 py-1 text-xs font-semibold text-[color:rgba(11,18,32,0.72)]">
-                  Risk areas
+                  Priorities
                 </span>
               </div>
               <div className="grid gap-3 p-4">
                 {[
                   {
-                    t: "Translation coverage",
-                    d: "Sections that often remain untranslated after edits.",
+                    t: "Goal & constraints",
+                    d: "Define success, timeline, budget, and current bottlenecks.",
                     kind: "ok",
                   },
                   {
-                    t: "Flow consistency",
-                    d: "Critical blocks behaving differently across pages.",
+                    t: "Top 3 levers",
+                    d: "The few changes most likely to move the KPI this week.",
                     kind: "warn",
                   },
                   {
-                    t: "UI/content mismatches",
-                    d: "Copy, spacing, and states that drift after refactors.",
+                    t: "Next actions",
+                    d: "A small checklist you can execute today.",
                     kind: "warn",
                   },
                 ].map((x) => (
@@ -130,51 +161,23 @@ export default function Home() {
                 ))}
               </div>
               <div className="border-t border-[color:rgba(15,23,42,0.06)] bg-[color:rgba(255,255,255,0.6)] p-4 text-sm text-[color:rgba(11,18,32,0.68)]">
-                A structured way to review your own work — like having calm, experienced eyes.
+                Structured thinking, practical output, no fluff — like having an experienced mentor on call.
               </div>
             </div>
-          </div>
-        </section>
-
-        <section id="problem" className="mx-auto w-full max-w-6xl px-6 py-14">
-          <div className="max-w-3xl">
-            <h2 className="text-3xl font-semibold tracking-[-0.02em]">The problem</h2>
-            <p className="mt-3 text-[color:rgba(11,18,32,0.72)]">
-              When you build a website alone, things break quietly. Nothing crashes. No errors show up. But later you
-              notice:
-            </p>
-          </div>
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
-            {[
-              { h: "A section wasn’t translated", p: "New language added — and a few blocks stayed in the old one." },
-              { h: "A flow feels inconsistent", p: "Buttons, pages, or states don’t match the path users actually take." },
-              { h: "A critical block behaves differently", p: "After a refactor, one key component subtly changed across the site." },
-            ].map((c) => (
-              <div
-                key={c.h}
-                className="rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.9)] p-5 shadow-[var(--shadow-sm)]"
-              >
-                <h3 className="text-base font-semibold">{c.h}</h3>
-                <p className="mt-2 text-sm text-[color:rgba(11,18,32,0.70)]">{c.p}</p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-6 rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.78)] p-5 text-[color:rgba(11,18,32,0.72)]">
-            You didn’t miss it because you’re careless. You missed it because you can’t see everything at once.{" "}
-            <span className="font-semibold text-[color:rgba(11,18,32,0.9)]">
-              The hardest part isn’t fixing bugs. It’s knowing what to check.
-            </span>
           </div>
         </section>
 
         <section id="how" className="border-y border-[color:rgba(15,23,42,0.04)] bg-[color:rgba(15,23,42,0.02)]">
           <div className="mx-auto w-full max-w-6xl px-6 py-14">
             <h2 className="text-3xl font-semibold tracking-[-0.02em]">How it works</h2>
+            <p className="mt-3 max-w-3xl text-[color:rgba(11,18,32,0.72)]">
+              Turn a business goal into a measurable plan — then execute weekly with clear checklists and reviews.
+            </p>
             <ol className="mt-6 grid gap-3">
               {[
-                { n: "1", t: "You paste a website URL", d: "No setup. No scripts. No repo access required." },
-                { n: "2", t: "We analyze structure, content, and flows", d: "It looks at what users will likely do — not just what pages exist." },
-                { n: "3", t: "You get a clear list of what to check", d: "A practical checklist + the places where issues like to hide." },
+                { n: "1", t: "Set a goal", d: "Tell us what you’re trying to improve (activation, conversion, retention, revenue)." },
+                { n: "2", t: "Add context", d: "Drop your current situation, constraints, and (optionally) a URL or screenshot." },
+                { n: "3", t: "Get a plan & execute", d: "You get priorities + next actions. You run the week. Then we review and iterate." },
               ].map((s) => (
                 <li
                   key={s.n}
@@ -190,55 +193,230 @@ export default function Home() {
                 </li>
               ))}
             </ol>
+            <div className="mt-8 grid gap-4 md:grid-cols-2">
+              <div className="rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.78)] p-5 shadow-[var(--shadow-sm)]">
+                <div className="text-sm font-semibold">See how it works in under 5 minutes</div>
+                <div className="mt-2 text-sm text-[color:rgba(11,18,32,0.70)]">
+                  Add a short Loom or product demo here later. For now, the app is ready to use.
+                </div>
+                <div className="mt-4 rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.03)] p-4 text-sm text-[color:rgba(11,18,32,0.72)]">
+                  Demo placeholder
+                </div>
+              </div>
+              <div className="rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.78)] p-5 shadow-[var(--shadow-sm)]">
+                <div className="text-sm font-semibold">Improve the metrics that matter</div>
+                <div className="mt-2 text-sm text-[color:rgba(11,18,32,0.70)]">
+                  One week at a time: clarity → plan → execution → review.
+                </div>
+                <div className="mt-4 grid gap-3">
+                  {[
+                    { h: "Clarity", p: "Define goal, constraints, and KPI targets." },
+                    { h: "Plan", p: "Prioritized roadmap + experiments." },
+                    { h: "Execution", p: "Weekly checklists and reviews." },
+                  ].map((x) => (
+                    <div
+                      key={x.h}
+                      className="rounded-2xl border border-[color:rgba(15,23,42,0.08)] bg-white/70 p-4"
+                    >
+                      <div className="font-semibold">{x.h}</div>
+                      <div className="mt-1 text-sm text-[color:rgba(11,18,32,0.70)]">{x.p}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section id="get" className="mx-auto w-full max-w-6xl px-6 py-14">
-          <h2 className="text-3xl font-semibold tracking-[-0.02em]">What you get</h2>
+        <section className="mx-auto w-full max-w-6xl px-6 py-14">
+          <h2 className="text-3xl font-semibold tracking-[-0.02em]">AI mentor vs. expensive consultants</h2>
+          <p className="mt-3 max-w-3xl text-[color:rgba(11,18,32,0.72)]">
+            Same principles, less waiting. Get help when you need it — and keep your process consistent.
+          </p>
           <div className="mt-8 grid gap-4 md:grid-cols-2">
+            <div className="rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.9)] p-6 shadow-[var(--shadow-sm)]">
+              <div className="text-sm font-semibold text-[color:rgba(11,18,32,0.78)]">AI mentor</div>
+              <ul className="mt-4 grid gap-2 text-sm text-[color:rgba(11,18,32,0.72)]">
+                {[
+                  "Available 24/7",
+                  "Minutes to a first plan",
+                  "Consistent frameworks & checklists",
+                  "Works across product, growth, ops",
+                ].map((t) => (
+                  <li key={t} className="flex gap-2">
+                    <span className="mt-1.5 h-2 w-2 rounded-full bg-[color:rgba(16,185,129,0.70)]" />
+                    <span>{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.78)] p-6 shadow-[var(--shadow-sm)]">
+              <div className="text-sm font-semibold text-[color:rgba(11,18,32,0.78)]">Traditional consulting</div>
+              <ul className="mt-4 grid gap-2 text-sm text-[color:rgba(11,18,32,0.72)]">
+                {[
+                  "Weeks to get started",
+                  "High cost per hour",
+                  "Quality varies by person",
+                  "Hard to keep a weekly cadence",
+                ].map((t) => (
+                  <li key={t} className="flex gap-2">
+                    <span className="mt-1.5 h-2 w-2 rounded-full bg-[color:rgba(245,158,11,0.70)]" />
+                    <span>{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="features"
+          className="border-y border-[color:rgba(15,23,42,0.04)] bg-[color:rgba(15,23,42,0.02)]"
+        >
+          <div className="mx-auto w-full max-w-6xl px-6 py-14">
+            <h2 className="text-3xl font-semibold tracking-[-0.02em]">Everything you need to build and grow</h2>
+            <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {[
+                { h: "KPI audit", p: "Why metrics are stuck + what to change first." },
+                { h: "UI/UX review", p: "Conversion and usability improvements with priorities." },
+                { h: "QA checklist", p: "Practical test checklist for releases and flows." },
+                { h: "Funnel & growth", p: "Acquisition → activation → retention experiments." },
+                { h: "Pricing & packaging", p: "Offer structure, tiers, positioning." },
+                { h: "Weekly operating system", p: "Plan → tasks → review → next iteration." },
+              ].map((c) => (
+                <div
+                  key={c.h}
+                  className="rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-white/85 p-6 shadow-[var(--shadow-sm)]"
+                >
+                  <h3 className="text-base font-semibold">{c.h}</h3>
+                  <p className="mt-2 text-sm text-[color:rgba(11,18,32,0.70)]">{c.p}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="use-cases" className="mx-auto w-full max-w-6xl px-6 py-14">
+          <h2 className="text-3xl font-semibold tracking-[-0.02em]">Built for every business function</h2>
+          <p className="mt-3 max-w-3xl text-[color:rgba(11,18,32,0.72)]">
+            Use it as a mentor across product, marketing, sales, success, and operations.
+          </p>
+          <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {[
-              { h: "Website understanding", items: ["What type of site this is (SaaS, landing page, e-commerce, etc.)"] },
-              { h: "Key user flows", items: ["The paths real users are likely to take", "Where consistency matters most"] },
-              { h: "Risk areas", items: ["Sections that often break after changes", "Language, content, and UI mismatches", "Areas that deserve extra attention"] },
-              { h: "A practical checklist", items: ["Functional checks", "UI and content consistency", "UX edge cases", "Things easy to miss when working alone"] },
+              { h: "Product", p: "Roadmap, prioritization, churn analysis." },
+              { h: "Marketing", p: "Landing audit, messaging, SEO ideas." },
+              { h: "Sales", p: "ICP, objections, outreach sequences." },
+              { h: "Customer Success", p: "Onboarding, retention playbooks." },
+              { h: "Operations", p: "SOPs, automation, hiring scorecards." },
+              { h: "Strategy", p: "Positioning, differentiation, moat hypotheses." },
             ].map((c) => (
               <div
                 key={c.h}
-                className="rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.9)] p-5 shadow-[var(--shadow-sm)]"
+                className="rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.9)] p-6 shadow-[var(--shadow-sm)]"
               >
                 <h3 className="text-base font-semibold">{c.h}</h3>
-                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[color:rgba(11,18,32,0.70)]">
-                  {c.items.map((i) => (
-                    <li key={i}>{i}</li>
-                  ))}
-                </ul>
+                <p className="mt-2 text-sm text-[color:rgba(11,18,32,0.70)]">{c.p}</p>
               </div>
             ))}
-            <div className="rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-gradient-to-b from-[color:rgba(97,106,243,0.08)] to-[color:rgba(139,92,246,0.06)] p-5 shadow-[var(--shadow-sm)]">
-              <h3 className="text-base font-semibold">What this is not</h3>
-              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[color:rgba(11,18,32,0.70)]">
-                <li>Not a test runner</li>
-                <li>Not an automation framework</li>
-                <li>Not a replacement for QA</li>
-                <li>It helps you notice what you might otherwise miss</li>
-              </ul>
+          </div>
+          <div className="mt-6 rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.78)] p-5 text-sm text-[color:rgba(11,18,32,0.72)]">
+            Missing a workflow? Create your own “mode” with a per‑project system prompt.
+          </div>
+        </section>
+
+        <section id="pricing" className="border-y border-[color:rgba(15,23,42,0.04)] bg-[color:rgba(15,23,42,0.02)]">
+          <div className="mx-auto w-full max-w-6xl px-6 py-14">
+            <h2 className="text-3xl font-semibold tracking-[-0.02em]">Start free, upgrade when you’re ready</h2>
+            <div className="mt-8 grid gap-4 md:grid-cols-3">
+              {[
+                {
+                  h: "Free",
+                  p: "Try it and feel the workflow.",
+                  items: ["Limited messages", "1 project", "Core prompts"],
+                },
+                {
+                  h: "Pro",
+                  p: "For builders who ship weekly.",
+                  items: ["Unlimited chat", "Saved projects", "Templates & modes"],
+                  highlight: true,
+                },
+                {
+                  h: "Team (later)",
+                  p: "For teams collaborating on execution.",
+                  items: ["Shared projects", "Roles & access", "Usage controls"],
+                },
+              ].map((c) => (
+                <div
+                  key={c.h}
+                  className={`rounded-[var(--radius)] border p-6 shadow-[var(--shadow-sm)] ${
+                    c.highlight
+                      ? "border-[color:rgba(97,106,243,0.28)] bg-white"
+                      : "border-[color:rgba(15,23,42,0.10)] bg-white/80"
+                  }`}
+                >
+                  <div className="text-lg font-semibold">{c.h}</div>
+                  <div className="mt-2 text-sm text-[color:rgba(11,18,32,0.70)]">{c.p}</div>
+                  <ul className="mt-4 grid gap-2 text-sm text-[color:rgba(11,18,32,0.72)]">
+                    {c.items.map((t) => (
+                      <li key={t} className="flex gap-2">
+                        <span className="mt-1.5 h-2 w-2 rounded-full bg-[color:rgba(97,106,243,0.70)]" />
+                        <span>{t}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
+          </div>
+        </section>
+
+        <section id="faq" className="mx-auto w-full max-w-6xl px-6 py-14">
+          <h2 className="text-3xl font-semibold tracking-[-0.02em]">FAQ</h2>
+          <div className="mt-8 grid gap-4 md:grid-cols-2">
+            {[
+              {
+                q: "What is an AI business mentor?",
+                a: "A guided way to turn goals into prioritized actions and run weekly iterations using proven frameworks.",
+              },
+              {
+                q: "How is it different from ChatGPT?",
+                a: "It’s built around projects, modes, and structured outputs (plans, checklists, audits) — not random conversation.",
+              },
+              {
+                q: "Can I add my business context?",
+                a: "Yes. Each chat can have its own system prompt (your project context) so answers stay consistent.",
+              },
+              {
+                q: "Is it private?",
+                a: "You control what you share. Don’t paste sensitive data you wouldn’t want in an AI system.",
+              },
+            ].map((x) => (
+              <div
+                key={x.q}
+                className="rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.9)] p-6 shadow-[var(--shadow-sm)]"
+              >
+                <div className="font-semibold">{x.q}</div>
+                <div className="mt-2 text-sm text-[color:rgba(11,18,32,0.70)]">{x.a}</div>
+              </div>
+            ))}
           </div>
         </section>
 
         <section id="try" className="border-t border-[color:rgba(15,23,42,0.06)]">
           <div className="mx-auto w-full max-w-6xl px-6 py-14">
             <h2 className="text-3xl font-semibold tracking-[-0.02em]">Try it</h2>
-            <p className="mt-2 text-[color:rgba(11,18,32,0.72)]">Sign in and analyze your first 5 pages for free.</p>
+            <p className="mt-2 text-[color:rgba(11,18,32,0.72)]">
+              Open the app, start a chat, and ask for an audit, a plan, or next steps. Works on mobile too.
+            </p>
             <div className="mt-6 flex flex-col gap-3 rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.8)] p-5 shadow-[var(--shadow-sm)] md:flex-row md:items-center md:justify-between">
               <div className="text-sm text-[color:rgba(11,18,32,0.78)]">
-                You’ll get a CSV checklist + a JSON snapshot of the page structure.
+                Start with “UI/UX audit”, “QA checklist”, or “Make me a weekly plan for X”.
               </div>
               <Link
                 href="/app"
                 className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.22)] hover:brightness-[1.02]"
               >
-                Start (5 free)
+                Open app
               </Link>
             </div>
           </div>
@@ -251,7 +429,7 @@ export default function Home() {
             <span className="h-6 w-6 rounded-lg bg-gradient-to-br from-[color:var(--accent)] to-[color:var(--accent-2)]" />
             WebMorpher
           </div>
-          <a href="#top" className="hover:underline">
+          <a href="#how" className="hover:underline">
             Back to top
           </a>
         </div>

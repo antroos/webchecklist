@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "WebMorpher — QA checklist for any website",
+  title: "WebMorpher — AI mentor for building your business",
   description:
-    "Open any page in a real browser, analyze structure, and generate a practical CSV checklist for testing.",
+    "An AI mentor for founders and teams. Get KPI-focused audits, actionable playbooks, and weekly execution — tailored to your business context.",
 };
 
 export default function RootLayout({
