@@ -274,6 +274,7 @@ function ChatWorkspace({
   onSelectMentor,
   drawerOpen,
   setDrawerOpen,
+  hasActiveChat,
 }: {
   chatId: string;
   initialMessages: UIMessage[];
@@ -282,6 +283,7 @@ function ChatWorkspace({
   onSelectMentor: (id: MentorId) => void;
   drawerOpen: boolean;
   setDrawerOpen: (v: boolean) => void;
+  hasActiveChat: boolean;
 }) {
   // #region agent log
   useEffect(() => {
@@ -300,6 +302,7 @@ function ChatWorkspace({
         message: "sidebar.debug.mount",
         data: {
           chatIdTail: chatId.slice(-6),
+          hasActiveChat,
           mdUp,
           win: { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio },
           sidebarExists: Boolean(sidebar),
@@ -387,6 +390,7 @@ function ChatWorkspace({
                 <MentorsNav
                   activeMentorId={mentorId}
                   onSelectMentor={onSelectMentor}
+                  canSend={hasActiveChat}
                   onNavigate={() => setDrawerOpen(false)}
                 />
                 <ChatList onNavigate={() => setDrawerOpen(false)} />
@@ -413,14 +417,22 @@ function ChatWorkspace({
             </Link>
 
             <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
-              <MentorsNav activeMentorId={mentorId} onSelectMentor={onSelectMentor} />
+              <MentorsNav activeMentorId={mentorId} onSelectMentor={onSelectMentor} canSend={hasActiveChat} />
               <ChatList />
             </div>
           </div>
         </aside>
 
         <div className="flex min-h-0 flex-1 flex-col">
-          <ChatThread />
+          {hasActiveChat ? (
+            <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
+              <ChatThread />
+            </div>
+          ) : (
+            <div className="flex flex-1 items-center justify-center text-sm text-[color:rgba(11,18,32,0.60)]">
+              Create or select a chat.
+            </div>
+          )}
         </div>
       </div>
     </AssistantRuntimeProvider>
@@ -638,34 +650,27 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
         </div>
       </header>
 
-      {!activeChatId ? (
+      {error && (
+        <div className="mb-2 rounded-lg border border-[color:rgba(239,68,68,0.25)] bg-[color:rgba(239,68,68,0.08)] px-3 py-2 text-xs text-[color:rgba(185,28,28,0.95)]">
+          {error}
+        </div>
+      )}
+      {loading ? (
         <div className="flex flex-1 items-center justify-center text-sm text-[color:rgba(11,18,32,0.60)]">
-          Create or select a chat.
+          Loading…
         </div>
       ) : (
-        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
-        {error && (
-            <div className="mb-2 rounded-lg border border-[color:rgba(239,68,68,0.25)] bg-[color:rgba(239,68,68,0.08)] px-3 py-2 text-xs text-[color:rgba(185,28,28,0.95)]">
-            {error}
-          </div>
-        )}
-          {loading ? (
-            <div className="flex flex-1 items-center justify-center text-sm text-[color:rgba(11,18,32,0.60)]">
-              Loading…
-            </div>
-          ) : (
-            <ChatWorkspace
-              key={`${activeChatId}:${model}:${mentorId}:${initialMessages.length}`}
-              chatId={activeChatId}
-              initialMessages={initialMessages}
-              model={model}
-              mentorId={mentorId}
-              onSelectMentor={selectMentor}
-              drawerOpen={drawerOpen}
-              setDrawerOpen={setDrawerOpen}
-            />
-          )}
-        </div>
+        <ChatWorkspace
+          key={`${activeChatId || "none"}:${model}:${mentorId}:${initialMessages.length}`}
+          chatId={activeChatId || "nochat"}
+          initialMessages={initialMessages}
+          model={model}
+          mentorId={mentorId}
+          onSelectMentor={selectMentor}
+          drawerOpen={drawerOpen}
+          setDrawerOpen={setDrawerOpen}
+          hasActiveChat={Boolean(activeChatId)}
+        />
       )}
     </div>
   );

@@ -9,14 +9,17 @@ export default function MentorsNav({
   activeMentorId,
   onSelectMentor,
   onNavigate,
+  canSend,
 }: {
   activeMentorId: MentorId;
   onSelectMentor: (id: MentorId) => void;
   onNavigate?: () => void;
+  canSend?: boolean;
 }) {
   const api = useAssistantApi();
   const isRunning = useAssistantState((s) => s.thread.isRunning);
   const active = useMemo(() => getMentor(activeMentorId), [activeMentorId]);
+  const sendEnabled = Boolean(canSend) && !isRunning;
 
   return (
     <div className="mt-4">
@@ -61,8 +64,9 @@ export default function MentorsNav({
               <button
                 key={a.id}
                 type="button"
-                disabled={isRunning}
+                disabled={!sendEnabled}
                 onClick={() => {
+                  if (!sendEnabled) return;
                   api.composer().setText(a.prompt);
                   api.composer().send();
                   onNavigate?.();
@@ -73,6 +77,11 @@ export default function MentorsNav({
               </button>
             ))}
           </div>
+          {!canSend && (
+            <div className="mt-2 text-[11px] text-[color:rgba(11,18,32,0.58)]">
+              Select a chat to run actions.
+            </div>
+          )}
         </div>
       )}
     </div>
