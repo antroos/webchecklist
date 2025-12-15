@@ -15,8 +15,12 @@ export type MessageRole = "user" | "assistant";
 
 export type MessageArtifacts = {
   csv?: string;
+  markdown?: string;
   raw?: unknown;
   html?: string;
+  snapshotId?: string;
+  analysisId?: string;
+  mode?: string;
   omitted?: boolean;
   omittedReason?: string;
 };
@@ -48,6 +52,7 @@ function sanitizeArtifacts(input: MessageArtifacts | undefined): MessageArtifact
 
   // Firestore doc size limit is 1MB. Keep MVP safe by limiting artifacts aggressively.
   const maxCsvBytes = 220_000;
+  const maxMarkdownBytes = 220_000;
   const maxHtmlBytes = 220_000;
   const maxRawBytes = 220_000;
 
@@ -64,6 +69,15 @@ function sanitizeArtifacts(input: MessageArtifacts | undefined): MessageArtifact
     }
   }
 
+  if (typeof input.markdown === "string") {
+    const sz = Buffer.byteLength(input.markdown, "utf8");
+    if (sz <= maxMarkdownBytes) out.markdown = input.markdown;
+    else {
+      omitted = true;
+      reasons.push("markdown_too_large");
+    }
+  }
+
   if (typeof input.html === "string") {
     const sz = Buffer.byteLength(input.html, "utf8");
     if (sz <= maxHtmlBytes) out.html = input.html;
@@ -71,6 +85,16 @@ function sanitizeArtifacts(input: MessageArtifacts | undefined): MessageArtifact
       omitted = true;
       reasons.push("html_too_large");
     }
+  }
+
+  if (typeof input.snapshotId === "string" && input.snapshotId.trim()) {
+    out.snapshotId = input.snapshotId.trim();
+  }
+  if (typeof input.analysisId === "string" && input.analysisId.trim()) {
+    out.analysisId = input.analysisId.trim();
+  }
+  if (typeof input.mode === "string" && input.mode.trim()) {
+    out.mode = input.mode.trim();
   }
 
   if (typeof input.raw !== "undefined") {

@@ -9,16 +9,31 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   kind?: "status" | "result" | "plain";
+  mode?: "qa_checklist" | "uiux_audit";
   csv?: string;
+  markdown?: string;
   raw?: unknown;
   html?: string;
   reportText?: string; // human-friendly rendering for in-app report (derived from csv)
+  snapshotId?: string;
+  analysisId?: string;
 };
 
-// SSE event types from /api/agent
+type AnalysisMode = "qa_checklist" | "uiux_audit";
+
+// SSE event types from /api/analyses
 type SSEEvent =
   | { type: "log"; message: string }
-  | { type: "result"; url: string; csv: string; raw: unknown }
+  | {
+      type: "result";
+      analysisId: string;
+      snapshotId: string;
+      mode: AnalysisMode;
+      url: string;
+      output:
+        | { kind: "csv"; csv: string }
+        | { kind: "markdown"; markdown: string };
+    }
   | { type: "error"; message: string };
 
 type OverageCapPayload = {
@@ -39,6 +54,35 @@ type BillingStatusMini = {
 
 function centsToDollars(cents: number) {
   return Math.round(cents) / 100;
+}
+
+function extractFirstUrlFromText(text: string): string | null {
+  const t = (text || "").trim();
+  if (!t) return null;
+  const urlRegex =
+    /(https?:\/\/[^\s]+)|((?:www\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(\/[^\s]*)?/i;
+  const m = t.match(urlRegex);
+  const raw = m?.[0]?.trim() || "";
+  if (!raw) return null;
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
+
+function inferModeFromText(text: string): AnalysisMode {
+  const t = (text || "").toLowerCase();
+  if (
+    t.includes("ui/ux") ||
+    t.includes("uiux") ||
+    t.includes("ux") ||
+    t.includes("usability") ||
+    t.includes("юзабил") ||
+    t.includes("дизайн")
+  ) {
+    return "uiux_audit";
+  }
+  if (t.includes("checklist") || t.includes("qa") || t.includes("чеклист")) {
+    return "qa_checklist";
+  }
+  return "qa_checklist";
 }
 
 function parseCsvChecklistToText(csv: string): { title: string; items: string[]; text: string } {
@@ -103,7 +147,7 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
       role: "assistant",
       kind: "plain",
       content:
-        "Paste a page URL (for example snoopgame.com or langfuse.com). I will open it in a real browser, analyze the structure and generate a CSV checklist for testing.",
+        "Paste a page URL (for example snoopgame.com). I will snapshot it (HTML + structure + screenshot), then you can run different analyses (QA checklist, UI/UX audit) without re-opening the browser.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -113,7 +157,17 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
     useState<AbortController | null>(null);
   const [needsUpgrade, setNeedsUpgrade] = useState(false);
   const [overagePrompt, setOveragePrompt] = useState<OverageCapPayload | null>(null);
-  const [pendingMessages, setPendingMessages] = useState<ChatMessage[] | null>(null);
+  const [activeSnapshot, setActiveSnapshot] = useState<{
+    snapshotId: string;
+    url: string;
+    title: string | null;
+  } | null>(null);
+  const [selectedMode, setSelectedMode] = useState<AnalysisMode>("qa_checklist");
+  const [pendingAnalysis, setPendingAnalysis] = useState<{
+    snapshotId: string;
+    mode: AnalysisMode;
+    instruction: string;
+  } | null>(null);
   const [creatingChat, setCreatingChat] = useState(false);
 
   const requestId = useMemo(() => {
@@ -151,7 +205,15 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
     role: "user" | "assistant";
     kind: "status" | "result" | "plain";
     content: string;
-    artifacts?: { csv?: string; raw?: unknown; html?: string };
+    artifacts?: {
+      csv?: string;
+      markdown?: string;
+      raw?: unknown;
+      html?: string;
+      snapshotId?: string;
+      analysisId?: string;
+      mode?: string;
+    };
   }) {
     try {
       // #region agent log
@@ -198,9 +260,16 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
           role: m.role === "user" ? "user" : "assistant",
           kind: m.kind === "status" || m.kind === "result" || m.kind === "plain" ? m.kind : "plain",
           content: typeof m.content === "string" ? m.content : "",
+          mode:
+            m.artifacts?.mode === "qa_checklist" || m.artifacts?.mode === "uiux_audit"
+              ? (m.artifacts.mode as AnalysisMode)
+              : undefined,
           csv: typeof m.artifacts?.csv === "string" ? m.artifacts.csv : undefined,
+          markdown: typeof m.artifacts?.markdown === "string" ? m.artifacts.markdown : undefined,
           raw: typeof m.artifacts?.raw !== "undefined" ? m.artifacts.raw : undefined,
           html: typeof m.artifacts?.html === "string" ? m.artifacts.html : undefined,
+          snapshotId: typeof m.artifacts?.snapshotId === "string" ? m.artifacts.snapshotId : undefined,
+          analysisId: typeof m.artifacts?.analysisId === "string" ? m.artifacts.analysisId : undefined,
         })),
       );
       return true;
@@ -325,18 +394,163 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
     }
   }
 
+  async function createSnapshotFromUrl(url: string) {
+    const res = await fetch("/api/snapshots", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`Snapshot failed: HTTP ${res.status} ${res.statusText}${t ? ` — ${t}` : ""}`);
+    }
+    const data = (await res.json().catch(() => null)) as
+      | { ok?: boolean; snapshotId?: string; url?: string; title?: string | null }
+      | null;
+    const snapshotId = typeof data?.snapshotId === "string" ? data.snapshotId : "";
+    const normalizedUrl = typeof data?.url === "string" ? data.url : url;
+    const title = typeof data?.title === "string" ? data.title : null;
+    if (!snapshotId) throw new Error("Snapshot failed: missing snapshotId");
+    return { snapshotId, url: normalizedUrl, title };
+  }
+
+  async function runAnalysis(params: { snapshotId: string; mode: AnalysisMode; instruction: string }) {
+    const controller = new AbortController();
+    setAbortController(controller);
+
+    const res = await fetch("/api/analyses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        snapshotId: params.snapshotId,
+        mode: params.mode,
+        instruction: params.instruction,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      if (res.status === 409) {
+        const data = (await res.json().catch(() => null)) as OverageCapPayload | null;
+        if (data && data.error === "OVERAGE_CAP") {
+          setOveragePrompt(data);
+          setPendingAnalysis(params);
+          return;
+        }
+      }
+      const text = await res.text().catch(() => "");
+      if (res.status === 402) setNeedsUpgrade(true);
+      throw new Error(`HTTP ${res.status}: ${res.statusText}${text ? ` — ${text}` : ""}`);
+    }
+
+    const reader = res.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) throw new Error("No response body");
+
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.trim() || !line.startsWith("data: ")) continue;
+        const jsonStr = line.slice(6);
+        try {
+          const event = JSON.parse(jsonStr) as SSEEvent;
+          if (event.type === "log") {
+            const msg: ChatMessage = {
+              id: `log-${Date.now()}-${Math.random()}`,
+              role: "assistant",
+              kind: "status",
+              content: event.message,
+            };
+            setMessages((prev) => [...prev, msg]);
+            if (activeChatId) {
+              void persistMessage({
+                chatId: activeChatId,
+                role: "assistant",
+                kind: "status",
+                content: msg.content,
+              });
+            }
+          } else if (event.type === "result") {
+            void refreshHeaderStats();
+            let csv: string | undefined;
+            let markdown: string | undefined;
+            if (event.output?.kind === "csv") csv = event.output.csv;
+            else if (event.output?.kind === "markdown") markdown = event.output.markdown;
+            const msg: ChatMessage = {
+              id: `result-${Date.now()}`,
+              role: "assistant",
+              kind: "result",
+              mode: event.mode,
+              content:
+                event.mode === "qa_checklist"
+                  ? `QA checklist for ${event.url}`
+                  : `UI/UX audit for ${event.url}`,
+              csv,
+              markdown,
+              snapshotId: event.snapshotId,
+              analysisId: event.analysisId,
+            };
+            setMessages((prev) => [...prev, msg]);
+            if (activeChatId) {
+              void persistMessage({
+                chatId: activeChatId,
+                role: "assistant",
+                kind: "result",
+                content: msg.content,
+                artifacts: {
+                  csv: msg.csv,
+                  markdown: msg.markdown,
+                  snapshotId: msg.snapshotId,
+                  analysisId: msg.analysisId,
+                  mode: msg.mode,
+                },
+              });
+            }
+          } else if (event.type === "error") {
+            setError(event.message);
+            void refreshHeaderStats();
+            const msg: ChatMessage = {
+              id: `err-${Date.now()}`,
+              role: "assistant",
+              kind: "plain",
+              content: event.message,
+            };
+            setMessages((prev) => [...prev, msg]);
+            if (activeChatId) {
+              void persistMessage({
+                chatId: activeChatId,
+                role: "assistant",
+                kind: "plain",
+                content: msg.content,
+              });
+            }
+          }
+        } catch (parseErr) {
+          console.warn("Failed to parse SSE event:", line, parseErr);
+        }
+      }
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
     if (!activeChatId) {
-      setError("Create a chat first (tap New chat), then paste URLs and press Analyze.");
+      setError("Create a chat first (tap New chat), then paste a URL and press Analyze.");
       return;
     }
 
     setError(null);
     setNeedsUpgrade(false);
     setOveragePrompt(null);
-    setPendingMessages(null);
+    setPendingAnalysis(null);
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -357,129 +571,42 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
       content: userMessage.content,
     });
 
-    const controller = new AbortController();
-    setAbortController(controller);
-
     try {
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          requestId,
-          messages: nextMessages.map(({ role, content }) => ({ role, content })),
-        }),
-        signal: controller.signal,
-      });
+      const maybeUrl = extractFirstUrlFromText(userMessage.content);
 
-      if (!res.ok) {
-        // Preserve old behavior, but surface the error text if possible.
-        if (res.status === 409) {
-          const data = (await res.json().catch(() => null)) as OverageCapPayload | null;
-          if (data && data.error === "OVERAGE_CAP") {
-            setOveragePrompt(data);
-            setPendingMessages(nextMessages);
-            return;
-          }
+      if (maybeUrl) {
+        const snap = await createSnapshotFromUrl(maybeUrl);
+        setActiveSnapshot({ snapshotId: snap.snapshotId, url: snap.url, title: snap.title });
+
+        const msg: ChatMessage = {
+          id: `snapshot-${Date.now()}`,
+          role: "assistant",
+          kind: "plain",
+          content: `Snapshot ready for ${snap.url}. Choose an analysis below (QA checklist or UI/UX audit), or just type what you want.`,
+          snapshotId: snap.snapshotId,
+        };
+        setMessages((prev) => [...prev, msg]);
+        void persistMessage({
+          chatId: activeChatId,
+          role: "assistant",
+          kind: "plain",
+          content: msg.content,
+          artifacts: { snapshotId: snap.snapshotId },
+        });
+      } else {
+        if (!activeSnapshot?.snapshotId) {
+          throw new Error("Paste a URL first to create a snapshot.");
         }
-
-        const text = await res.text().catch(() => "");
-        if (res.status === 402) {
-          setNeedsUpgrade(true);
-        }
-        throw new Error(
-          `HTTP ${res.status}: ${res.statusText}${text ? ` — ${text}` : ""}`,
-        );
-      }
-
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-
-      if (!reader) {
-        throw new Error("No response body");
-      }
-
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.trim() || !line.startsWith("data: ")) continue;
-
-          const jsonStr = line.slice(6); // Remove "data: " prefix
-          try {
-            const event = JSON.parse(jsonStr) as SSEEvent;
-
-            if (event.type === "log") {
-              const msg: ChatMessage = {
-                id: `log-${Date.now()}-${Math.random()}`,
-                role: "assistant",
-                kind: "status",
-                content: event.message,
-              };
-              setMessages((prev) => [...prev, msg]);
-              if (activeChatId) {
-                void persistMessage({
-                  chatId: activeChatId,
-                  role: "assistant",
-                  kind: "status",
-                  content: msg.content,
-                });
-              }
-            } else if (event.type === "result") {
-              // Credits were reserved server-side; refresh after the run.
-              void refreshHeaderStats();
-              const rawAny = event.raw as any;
-              const html = typeof rawAny?.html === "string" ? rawAny.html : undefined;
-              const msg: ChatMessage = {
-                id: `result-${Date.now()}`,
-                role: "assistant",
-                kind: "result",
-                content: `Checklist for ${event.url}`,
-                csv: event.csv,
-                raw: event.raw,
-                html,
-              };
-              setMessages((prev) => [...prev, msg]);
-              if (activeChatId) {
-                void persistMessage({
-                  chatId: activeChatId,
-                  role: "assistant",
-                  kind: "result",
-                  content: msg.content,
-                  artifacts: { csv: msg.csv, raw: msg.raw, html: msg.html },
-                });
-              }
-            } else if (event.type === "error") {
-              setError(event.message);
-              void refreshHeaderStats();
-              const msg: ChatMessage = {
-                id: `err-${Date.now()}`,
-                role: "assistant",
-                kind: "plain",
-                content: event.message,
-              };
-              setMessages((prev) => [...prev, msg]);
-              if (activeChatId) {
-                void persistMessage({
-                  chatId: activeChatId,
-                  role: "assistant",
-                  kind: "plain",
-                  content: msg.content,
-                });
-              }
-            }
-          } catch (parseErr) {
-            console.warn("Failed to parse SSE event:", line, parseErr);
-          }
-        }
+        const inferred = inferModeFromText(userMessage.content);
+        const mode =
+          inferred === "qa_checklist" && selectedMode === "uiux_audit"
+            ? "uiux_audit"
+            : inferred;
+        await runAnalysis({
+          snapshotId: activeSnapshot.snapshotId,
+          mode,
+          instruction: userMessage.content,
+        });
       }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
@@ -497,7 +624,7 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
         const message =
           err instanceof Error
             ? err.message
-            : "Network error while calling /api/agent.";
+            : "Network error while processing the request.";
         setError(message);
         void refreshHeaderStats();
         setMessages((prev) => [
@@ -524,8 +651,34 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
     router.push("/app/billing");
   }
 
+  async function runQuickAnalysis(mode: AnalysisMode) {
+    if (!activeSnapshot?.snapshotId) {
+      setError("Paste a URL first to create a snapshot.");
+      return;
+    }
+    if (isLoading) return;
+    setError(null);
+    setNeedsUpgrade(false);
+    setOveragePrompt(null);
+    setPendingAnalysis(null);
+    setIsLoading(true);
+    try {
+      await runAnalysis({
+        snapshotId: activeSnapshot.snapshotId,
+        mode,
+        instruction: "",
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to run analysis");
+      void refreshHeaderStats();
+    } finally {
+      setAbortController(null);
+      setIsLoading(false);
+    }
+  }
+
   async function confirmOverageAndRetry() {
-    if (!pendingMessages) return;
+    if (!pendingAnalysis) return;
     setError(null);
     setOveragePrompt(null);
     try {
@@ -539,96 +692,16 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
       return;
     }
 
-    // Retry by reusing the last messages list.
     setIsLoading(true);
-    const controller = new AbortController();
-    setAbortController(controller);
     try {
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requestId,
-          messages: pendingMessages.map(({ role, content }) => ({ role, content })),
-        }),
-        signal: controller.signal,
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(`HTTP ${res.status}: ${res.statusText}${text ? ` — ${text}` : ""}`);
-      }
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      if (!reader) throw new Error("No response body");
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-        for (const line of lines) {
-          if (!line.trim() || !line.startsWith("data: ")) continue;
-          const jsonStr = line.slice(6);
-          try {
-            const event = JSON.parse(jsonStr) as SSEEvent;
-            if (event.type === "log") {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `log-${Date.now()}-${Math.random()}`,
-                  role: "assistant",
-                  kind: "status",
-                  content: event.message,
-                },
-              ]);
-            } else if (event.type === "result") {
-              void refreshHeaderStats();
-              const rawAny = event.raw as any;
-              const html = typeof rawAny?.html === "string" ? rawAny.html : undefined;
-              const msg: ChatMessage = {
-                id: `result-${Date.now()}`,
-                role: "assistant",
-                kind: "result",
-                content: `Checklist for ${event.url}`,
-                csv: event.csv,
-                raw: event.raw,
-                html,
-              };
-              setMessages((prev) => [...prev, msg]);
-              if (activeChatId) {
-                void persistMessage({
-                  chatId: activeChatId,
-                  role: "assistant",
-                  kind: "result",
-                  content: msg.content,
-                  artifacts: { csv: msg.csv, raw: msg.raw, html: msg.html },
-                });
-              }
-            } else if (event.type === "error") {
-              setError(event.message);
-              void refreshHeaderStats();
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `err-${Date.now()}`,
-                  role: "assistant",
-                  kind: "plain",
-                  content: event.message,
-                },
-              ]);
-            }
-          } catch (parseErr) {
-            console.warn("Failed to parse SSE event:", line, parseErr);
-          }
-        }
-      }
+      const toRun = pendingAnalysis;
+      setPendingAnalysis(null);
+      await runAnalysis(toRun);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Retry failed");
     } finally {
       setAbortController(null);
       setIsLoading(false);
-      setPendingMessages(null);
     }
   }
 
@@ -714,6 +787,53 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
       );
     }
 
+    if (message.kind === "result" && message.markdown) {
+      const text = message.markdown;
+      return (
+        <div
+          key={message.id}
+          className={`flex ${isAssistant ? "justify-start" : "justify-end"}`}
+        >
+          <div className="max-w-full space-y-3 rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.92)] p-3 text-sm shadow-[var(--shadow-sm)] md:max-w-3xl">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-wide text-[color:rgba(11,18,32,0.72)]">
+                  UI/UX audit
+                </div>
+                <div className="mt-1 truncate text-sm font-semibold text-[color:rgba(11,18,32,0.92)]">
+                  {message.content}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    if (!text) return;
+                    await navigator.clipboard.writeText(text);
+                  } catch {
+                    // ignore
+                  }
+                }}
+                disabled={!text}
+                className="h-8 shrink-0 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/85 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-white"
+              >
+                Copy
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)] p-3">
+              <div className="text-xs font-semibold text-[color:rgba(11,18,32,0.74)]">
+                Report (Markdown)
+              </div>
+              <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap text-[12px] leading-relaxed text-[color:rgba(11,18,32,0.84)]">
+                {text}
+              </pre>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     const bubbleClasses = isAssistant
       ? "bg-[color:rgba(255,255,255,0.88)] border-[color:rgba(15,23,42,0.10)] text-[color:rgba(11,18,32,0.90)]"
       : "bg-[color:rgba(97,106,243,0.12)] border-[color:rgba(97,106,243,0.22)] text-[color:rgba(11,18,32,0.92)]";
@@ -743,7 +863,7 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
         <div className="min-w-0">
           <h1 className="text-lg font-semibold">WebMorpher</h1>
           <p className="text-xs text-[color:rgba(11,18,32,0.72)]">
-            Chat interface for opening real pages in a browser, analyzing structure and generating CSV test checklists.
+            Snapshot a page once (HTML + structure + screenshot), then run different analyses (QA checklist, UI/UX audit).
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -771,7 +891,7 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
             <div className="flex justify-start">
               <div className="inline-flex items-center gap-2 rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.8)] px-3 py-1.5 text-xs text-[color:rgba(11,18,32,0.72)]">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[color:var(--ok)]" />
-                Analyzing page and generating checklist...
+                Working…
               </div>
             </div>
           )}
@@ -837,6 +957,39 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
         )}
 
         <form onSubmit={handleSubmit} className="mt-1 flex flex-col gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.75)] px-3 py-2">
+            <div className="min-w-0 text-xs text-[color:rgba(11,18,32,0.78)]">
+              {activeSnapshot ? (
+                <span className="truncate">
+                  Active snapshot:{" "}
+                  <span className="font-semibold">{activeSnapshot.url}</span>
+                </span>
+              ) : (
+                <span>
+                  No snapshot yet. Paste a URL to create one.
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => runQuickAnalysis("qa_checklist")}
+                disabled={!activeSnapshot || isLoading}
+                className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/85 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-white disabled:opacity-60"
+              >
+                Run QA
+              </button>
+              <button
+                type="button"
+                onClick={() => runQuickAnalysis("uiux_audit")}
+                disabled={!activeSnapshot || isLoading}
+                className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/85 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-white disabled:opacity-60"
+              >
+                Run UI/UX
+              </button>
+            </div>
+          </div>
+
           <div className="flex flex-wrap items-center gap-2">
             <div className="text-xs font-semibold text-[color:rgba(11,18,32,0.72)]">
               Analyze as:
@@ -844,40 +997,49 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
             <div className="inline-flex overflow-hidden rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-[color:rgba(255,255,255,0.85)]">
               <button
                 type="button"
-                aria-pressed={true}
+                aria-pressed={selectedMode === "qa_checklist"}
+                onClick={() => setSelectedMode("qa_checklist")}
                 className={[
                   "h-8 px-3 text-xs font-semibold transition",
-                  "bg-[color:rgba(97,106,243,0.14)] text-[color:rgba(11,18,32,0.92)]",
+                  selectedMode === "qa_checklist"
+                    ? "bg-[color:rgba(97,106,243,0.14)] text-[color:rgba(11,18,32,0.92)]"
+                    : "text-[color:rgba(11,18,32,0.70)] hover:bg-[color:rgba(15,23,42,0.04)]",
                 ].join(" ")}
               >
                 QA checklist
               </button>
               <button
                 type="button"
-                disabled
-                className="h-8 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.45)]"
+                aria-pressed={selectedMode === "uiux_audit"}
+                onClick={() => setSelectedMode("uiux_audit")}
+                className={[
+                  "h-8 px-3 text-xs font-semibold transition",
+                  selectedMode === "uiux_audit"
+                    ? "bg-[color:rgba(97,106,243,0.14)] text-[color:rgba(11,18,32,0.92)]"
+                    : "text-[color:rgba(11,18,32,0.70)] hover:bg-[color:rgba(15,23,42,0.04)]",
+                ].join(" ")}
               >
-                UI/UX audit (soon)
+                UI/UX audit
               </button>
             </div>
           </div>
 
           <div className="rounded-[var(--radius)] border border-[color:rgba(97,106,243,0.25)] bg-[color:rgba(97,106,243,0.06)] p-3">
             <div className="text-xs font-semibold text-[color:rgba(11,18,32,0.80)]">
-              Paste 1+ URLs (one per line)
+              Paste a URL (to snapshot), or ask for an analysis (uses the active snapshot)
             </div>
             <div className="mt-2">
               <textarea
                 rows={3}
                 disabled={!activeChatId}
                 className="w-full resize-none rounded-xl border border-[color:rgba(97,106,243,0.28)] bg-[color:rgba(255,255,255,0.98)] px-3 py-2 text-sm text-[color:rgba(11,18,32,0.92)] outline-none placeholder:text-[color:rgba(11,18,32,0.45)] focus:border-[color:rgba(97,106,243,0.65)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.16)] disabled:cursor-not-allowed disabled:opacity-60"
-                placeholder={"https://snoopgame.com\nhttps://langfuse.com"}
+                placeholder={"https://snoopgame.com\n\nor: audit UI/UX focusing on trust & conversion"}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
               />
             </div>
             <div className="mt-2 text-[11px] text-[color:rgba(11,18,32,0.60)]">
-              Tip: you can paste domains too (we’ll normalize to https).
+              Tip: you can paste domains too (we’ll normalize to https). If there’s no URL in your message, we’ll analyze the last snapshot.
             </div>
           </div>
           {isLoading ? (

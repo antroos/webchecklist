@@ -2,6 +2,7 @@ import sys
 import asyncio
 import json
 import time
+import base64
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 
@@ -181,6 +182,11 @@ async def analyze_page(url):
             screenshot_filename = f"screenshot_{int(time.time())}.png"
             await page.screenshot(path=screenshot_filename, full_page=True)
             content["screenshot"] = screenshot_filename
+            try:
+                with open(screenshot_filename, "rb") as f:
+                    content["screenshot_base64"] = base64.b64encode(f.read()).decode("ascii")
+            except Exception:
+                content["screenshot_base64"] = None
             
             print("🐍 Browser: Screenshot saved ✓", file=sys.stderr, flush=True)
             print("🐍 Browser: Closing browser...", file=sys.stderr, flush=True)

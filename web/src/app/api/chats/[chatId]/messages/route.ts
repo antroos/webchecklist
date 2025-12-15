@@ -70,7 +70,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ chatId: st
     role?: "user" | "assistant";
     kind?: "status" | "result" | "plain";
     content?: string;
-    artifacts?: { csv?: string; raw?: unknown; html?: string };
+    artifacts?: {
+      csv?: string;
+      markdown?: string;
+      raw?: unknown;
+      html?: string;
+      snapshotId?: string;
+      analysisId?: string;
+      mode?: string;
+    };
   };
 
   const role = body.role === "user" || body.role === "assistant" ? body.role : null;
