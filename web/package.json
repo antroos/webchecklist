@@ -9,7 +9,11 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.86",
+    "@assistant-ui/react": "^0.11.51",
+    "@assistant-ui/react-ai-sdk": "^1.1.19",
     "adm-zip": "^0.5.16",
+    "ai": "^5.0.113",
     "firebase-admin": "^13.5.0",
     "next": "16.0.6",
     "next-auth": "^4.24.11",
