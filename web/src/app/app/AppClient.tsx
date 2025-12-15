@@ -62,15 +62,43 @@ function AssistantBubble() {
 
 function Composer() {
   return (
-    <ComposerPrimitive.Root className="rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.92)] p-3 shadow-[0_10px_26px_rgba(15,23,42,0.08)]">
-      <ComposerPrimitive.Input className="min-h-[52px] w-full resize-none rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white/90 px-3 py-2 text-sm text-[color:rgba(11,18,32,0.92)] outline-none placeholder:text-[color:rgba(11,18,32,0.45)] focus:border-[color:rgba(97,106,243,0.60)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.14)]" />
-      <div className="mt-2 flex items-center justify-end gap-2">
+    <ComposerPrimitive.Root className="rounded-3xl border border-[color:rgba(15,23,42,0.12)] bg-white/95 p-3 shadow-[0_14px_40px_rgba(15,23,42,0.10)]">
+      <ComposerPrimitive.Input className="min-h-[54px] w-full resize-none rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-white px-4 py-3 text-[15px] leading-relaxed text-[color:rgba(11,18,32,0.92)] outline-none placeholder:text-[color:rgba(11,18,32,0.45)] focus:border-[color:rgba(97,106,243,0.60)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.14)]" />
+      <div className="mt-3 flex items-center justify-end gap-2">
         <ComposerPrimitive.Cancel className="hidden" />
         <ComposerPrimitive.Send className="h-10 rounded-xl bg-[color:rgba(15,23,42,0.90)] px-4 text-sm font-medium text-white hover:bg-[color:rgba(15,23,42,0.82)]">
           Send
         </ComposerPrimitive.Send>
       </div>
     </ComposerPrimitive.Root>
+  );
+}
+
+function Suggestions() {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <ThreadPrimitive.Suggestion
+        prompt="Проаналізуй UI/UX і дай 5 пріоритетних покращень."
+        send
+        className="rounded-full border border-[color:rgba(15,23,42,0.10)] bg-white/90 px-3 py-2 text-[12px] font-semibold text-[color:rgba(11,18,32,0.82)] hover:bg-white"
+      >
+        UI/UX audit
+      </ThreadPrimitive.Suggestion>
+      <ThreadPrimitive.Suggestion
+        prompt="Зроби чекліст для QA тестування цієї сторінки."
+        send
+        className="rounded-full border border-[color:rgba(15,23,42,0.10)] bg-white/90 px-3 py-2 text-[12px] font-semibold text-[color:rgba(11,18,32,0.82)] hover:bg-white"
+      >
+        QA checklist
+      </ThreadPrimitive.Suggestion>
+      <ThreadPrimitive.Suggestion
+        prompt="Скажи коротко: що тут головне і яка ціль цієї сторінки?"
+        send
+        className="rounded-full border border-[color:rgba(15,23,42,0.10)] bg-white/90 px-3 py-2 text-[12px] font-semibold text-[color:rgba(11,18,32,0.82)] hover:bg-white"
+      >
+        Page goal
+      </ThreadPrimitive.Suggestion>
+    </div>
   );
 }
 
@@ -131,7 +159,7 @@ function ChatThread({
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)] p-3">
+        <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto rounded-3xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)] p-4">
           <ThreadPrimitive.Messages
             components={{
               UserMessage: UserBubble,
@@ -140,7 +168,10 @@ function ChatThread({
           />
         </ThreadPrimitive.Viewport>
 
-        <div className="sticky bottom-0 mt-3 bg-[color:var(--card)] pt-2">
+        <div className="sticky bottom-0 mt-3 bg-[color:var(--card)] pt-2 pb-[calc(env(safe-area-inset-bottom)+8px)]">
+          <div className="mb-2">
+            <Suggestions />
+          </div>
           <Composer />
         </div>
       </ThreadPrimitive.Root>
@@ -161,10 +192,10 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
   useEffect(() => {
     // #region agent log
     fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: "debug-session",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "debug-session",
         runId: "run-chat-1",
         hypothesisId: "H4",
         location: "web/src/app/app/AppClient.tsx:mount",
@@ -177,10 +208,10 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
               ? { w: window.innerWidth, h: window.innerHeight }
               : null,
         },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion agent log
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion agent log
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -189,7 +220,7 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
     let cancelled = false;
     setError(null);
     setLoading(true);
-    // #region agent log
+      // #region agent log
     fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -203,7 +234,7 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
         timestamp: Date.now(),
       }),
     }).catch(() => {});
-    // #endregion agent log
+      // #endregion agent log
     fetch(`/api/chats/${encodeURIComponent(activeChatId)}/messages`)
       .then(async (r) => {
         if (!r.ok) {
@@ -257,12 +288,12 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
 
   const initialMessages = useMemo(() => toUiMessages(persisted), [persisted]);
 
-  return (
+      return (
     <div className="flex min-h-0 w-full flex-1 flex-col rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 shadow-[var(--shadow)]">
       {drawerOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
-          <button
-            type="button"
+              <button
+                type="button"
             aria-label="Close menu"
             onClick={() => setDrawerOpen(false)}
             className="absolute inset-0 bg-black/30"
@@ -331,12 +362,12 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
           Create or select a chat.
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col">
-          {error && (
+        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
+        {error && (
             <div className="mb-2 rounded-lg border border-[color:rgba(239,68,68,0.25)] bg-[color:rgba(239,68,68,0.08)] px-3 py-2 text-xs text-[color:rgba(185,28,28,0.95)]">
-              {error}
-            </div>
-          )}
+            {error}
+          </div>
+        )}
           {loading ? (
             <div className="flex flex-1 items-center justify-center text-sm text-[color:rgba(11,18,32,0.60)]">
               Loading…
