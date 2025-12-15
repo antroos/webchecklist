@@ -50,38 +50,44 @@ function getBasePrompt(): string {
 
 export async function POST(req: Request) {
   // #region agent log
-  fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      sessionId: "debug-session",
-      runId: "run-chat-1",
-      hypothesisId: "H1",
-      location: "web/src/app/api/chat/route.ts:POST:entry",
-      message: "api.chat.entry",
-      data: { hasEnvKey: Boolean(process.env.OPENAI_API_KEY), nodeEnv: process.env.NODE_ENV },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion agent log
-
-  const session = await auth();
-  const userId = (session?.user as { id?: string } | undefined)?.id;
-  if (!userId) {
-    // #region agent log
+  // Server-side code runs on Cloud Run, so it cannot reach the local debug ingest endpoint.
+  // Keep this instrumentation gated for local debugging only.
+  if (process.env.WMDBG_LOCAL === "1") {
     fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sessionId: "debug-session",
         runId: "run-chat-1",
-        hypothesisId: "H3",
-        location: "web/src/app/api/chat/route.ts:POST:auth",
-        message: "api.chat.unauthorized",
-        data: {},
+        hypothesisId: "H1",
+        location: "web/src/app/api/chat/route.ts:POST:entry",
+        message: "api.chat.entry",
+        data: { hasEnvKey: Boolean(process.env.OPENAI_API_KEY), nodeEnv: process.env.NODE_ENV },
         timestamp: Date.now(),
       }),
     }).catch(() => {});
+  }
+  // #endregion agent log
+
+  const session = await auth();
+  const userId = (session?.user as { id?: string } | undefined)?.id;
+  if (!userId) {
+    // #region agent log
+    if (process.env.WMDBG_LOCAL === "1") {
+      fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "debug-session",
+          runId: "run-chat-1",
+          hypothesisId: "H3",
+          location: "web/src/app/api/chat/route.ts:POST:auth",
+          message: "api.chat.unauthorized",
+          data: {},
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
     // #endregion agent log
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -90,43 +96,47 @@ export async function POST(req: Request) {
   const chatId = typeof body.chatId === "string" ? body.chatId.trim() : "";
   if (!chatId) {
     // #region agent log
-    fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: "debug-session",
-        runId: "run-chat-1",
-        hypothesisId: "H2",
-        location: "web/src/app/api/chat/route.ts:POST:body",
-        message: "api.chat.missingChatId",
-        data: { bodyKeys: body ? Object.keys(body) : null },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
+    if (process.env.WMDBG_LOCAL === "1") {
+      fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "debug-session",
+          runId: "run-chat-1",
+          hypothesisId: "H2",
+          location: "web/src/app/api/chat/route.ts:POST:body",
+          message: "api.chat.missingChatId",
+          data: { bodyKeys: body ? Object.keys(body) : null },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
     // #endregion agent log
     return NextResponse.json({ error: "Missing chatId" }, { status: 400 });
   }
 
   const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : "gpt-5.2";
   // #region agent log
-  fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      sessionId: "debug-session",
-      runId: "run-chat-1",
-      hypothesisId: "H1",
-      location: "web/src/app/api/chat/route.ts:POST:parsed",
-      message: "api.chat.parsed",
-      data: {
-        chatIdTail: chatId.slice(-6),
-        model,
-        hasMessages: Array.isArray(body.messages),
-        messagesLen: Array.isArray(body.messages) ? body.messages.length : -1,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
+  if (process.env.WMDBG_LOCAL === "1") {
+    fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: "debug-session",
+        runId: "run-chat-1",
+        hypothesisId: "H1",
+        location: "web/src/app/api/chat/route.ts:POST:parsed",
+        message: "api.chat.parsed",
+        data: {
+          chatIdTail: chatId.slice(-6),
+          model,
+          hasMessages: Array.isArray(body.messages),
+          messagesLen: Array.isArray(body.messages) ? body.messages.length : -1,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }
   // #endregion agent log
 
   const simpleMessages = toSimpleMessages(body.messages);
@@ -178,19 +188,21 @@ export async function POST(req: Request) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     // #region agent log
-    fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: "debug-session",
-        runId: "run-chat-1",
-        hypothesisId: "H1",
-        location: "web/src/app/api/chat/route.ts:POST:catch",
-        message: "api.chat.streamText.error",
-        data: { errorMessage: msg.slice(0, 500) },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
+    if (process.env.WMDBG_LOCAL === "1") {
+      fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "debug-session",
+          runId: "run-chat-1",
+          hypothesisId: "H1",
+          location: "web/src/app/api/chat/route.ts:POST:catch",
+          message: "api.chat.streamText.error",
+          data: { errorMessage: msg.slice(0, 500) },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
     // #endregion agent log
     return NextResponse.json({ error: "CHAT_FAILED", message: msg }, { status: 500 });
   }

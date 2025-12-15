@@ -45,23 +45,38 @@ async function runPythonSnapshot(params: {
   proc.stderr.on("data", (d) => (stderr += d.toString()));
 
   const result = await new Promise<PythonResult>((resolve, reject) => {
+    let settled = false;
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      fn();
+    };
+
     const timeout = setTimeout(() => {
-      proc.kill("SIGTERM");
-      reject(new Error("Browser snapshot timeout (3 minutes)"));
+      settle(() => {
+        proc.kill("SIGTERM");
+        reject(new Error("Browser snapshot timeout (3 minutes)"));
+      });
     }, 180_000);
 
-    proc.on("close", (code) => {
-      clearTimeout(timeout);
-      if (code !== 0) {
-        reject(new Error(`Python exited with code ${code}: ${stderr.substring(0, 800)}`));
-        return;
-      }
-      try {
-        resolve(JSON.parse(stdout) as PythonResult);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Unknown JSON parse error";
-        reject(new Error(`Failed to parse Python output: ${msg}. First 800 chars: ${stdout.substring(0, 800)}`));
-      }
+    proc.once("close", (code) => {
+      settle(() => {
+        clearTimeout(timeout);
+        if (code !== 0) {
+          reject(new Error(`Python exited with code ${code}: ${stderr.substring(0, 800)}`));
+          return;
+        }
+        try {
+          resolve(JSON.parse(stdout) as PythonResult);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Unknown JSON parse error";
+          reject(
+            new Error(
+              `Failed to parse Python output: ${msg}. First 800 chars: ${stdout.substring(0, 800)}`,
+            ),
+          );
+        }
+      });
     });
   });
 

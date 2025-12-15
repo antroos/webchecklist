@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { signOut } from "next-auth/react";
 
 import {
@@ -12,6 +13,9 @@ import {
 } from "@assistant-ui/react";
 import { AssistantChatTransport, useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import type { UIMessage } from "ai";
+
+import SidebarNav from "./sidebar/SidebarNav";
+import ChatList from "./sidebar/ChatList";
 
 type PersistedMessage = {
   id: string;
@@ -84,6 +88,36 @@ function ChatThread({
       new AssistantChatTransport({
         api: "/api/chat",
         body: { chatId, model },
+        fetch: async (input, init) => {
+          const url = typeof input === "string" ? input : input instanceof Request ? input.url : "";
+          const res = await fetch(input as any, init as any);
+          if (url.includes("/api/chat") && !res.ok) {
+            // #region agent log
+            const cloned = res.clone();
+            const text = await cloned.text().catch(() => "");
+            fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sessionId: "debug-session",
+                runId: "run-chat-2",
+                hypothesisId: "H1",
+                location: "web/src/app/app/AppClient.tsx:transport.fetch",
+                message: "client.apiChat.error",
+                data: {
+                  status: res.status,
+                  statusText: res.statusText,
+                  bodyPrefix: text.slice(0, 800),
+                  chatIdTail: chatId.slice(-6),
+                  model,
+                },
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
+            // #endregion agent log
+          }
+          return res;
+        },
       }),
     [chatId, model],
   );
@@ -118,6 +152,7 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [persisted, setPersisted] = useState<PersistedMessage[]>([]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   // MVP: only one model exposed, but keep the selector shape for future expansion.
   const [model, setModel] = useState("gpt-5.2");
@@ -223,12 +258,55 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
 
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 shadow-[var(--shadow)]">
+      {drawerOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={() => setDrawerOpen(false)}
+            className="absolute inset-0 bg-black/30"
+          />
+          <div className="absolute left-0 top-0 h-full w-[86%] max-w-[340px] overflow-hidden bg-[color:var(--bg)] shadow-[var(--shadow)]">
+            <div className="flex h-full flex-col p-4">
+              <div className="flex items-center justify-between gap-3">
+                <Link href="/app" onClick={() => setDrawerOpen(false)} className="text-sm font-semibold">
+                  WebMorpher
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  className="h-9 w-9 rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white/85 text-[color:rgba(11,18,32,0.78)]"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
+                <SidebarNav />
+                <ChatList onNavigate={() => setDrawerOpen(false)} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="mb-3 flex items-center justify-between gap-3 border-b border-[color:rgba(15,23,42,0.08)] pb-2">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold">Chat</div>
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white/85 text-[color:rgba(11,18,32,0.78)] md:hidden"
+            aria-label="Open menu"
+          >
+            ☰
+          </button>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold">Chat</div>
           <div className="text-[11px] text-[color:rgba(11,18,32,0.60)]">
             Cursor-like chat. One input. Streaming answers.
           </div>
+        </div>
         </div>
         <div className="flex items-center gap-2">
           <select

@@ -9,7 +9,11 @@ type ChatListItem = {
   lastMessagePreview?: string | null;
 };
 
-export default function ChatList() {
+export default function ChatList({
+  onNavigate,
+}: {
+  onNavigate?: () => void;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -72,6 +76,7 @@ export default function ChatList() {
       if (!data.chatId) throw new Error("Missing chatId");
       await refresh();
       router.push(`${basePath}?chatId=${encodeURIComponent(data.chatId)}`);
+      onNavigate?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create chat");
     } finally {
@@ -130,6 +135,7 @@ export default function ChatList() {
 
   function openChat(chatId: string) {
     router.push(`${basePath}?chatId=${encodeURIComponent(chatId)}`);
+    onNavigate?.();
   }
 
   return (
