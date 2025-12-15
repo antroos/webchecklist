@@ -5,9 +5,6 @@ import { createChat, listChats } from "@/lib/chatStore";
 
 export const runtime = "nodejs";
 
-const WELCOME =
-  "Paste a page URL (for example snoopgame.com or langfuse.com). I will open it in a real browser, analyze the structure and generate a CSV checklist for testing.";
-
 function maskId(id: string) {
   if (!id) return "";
   if (id.length <= 6) return "***";
@@ -62,7 +59,6 @@ export async function POST(req: NextRequest) {
     userId,
     title: body.title,
     siteUrl: body.siteUrl ?? null,
-    welcomeMessage: WELCOME,
   });
 
   // #region agent log

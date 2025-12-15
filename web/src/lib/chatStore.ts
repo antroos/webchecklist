@@ -175,26 +175,29 @@ export async function createChat(params: {
   userId: string;
   title?: string;
   siteUrl?: string | null;
-  welcomeMessage: string;
+  welcomeMessage?: string;
 }) {
   const ref = userChatsRef(params.userId).doc();
   const now = FieldValue.serverTimestamp();
   const title = (params.title || "").trim() || "New chat";
+  const welcome = (params.welcomeMessage || "").trim();
 
   await ref.set({
     title,
     siteUrl: params.siteUrl ?? null,
-    lastMessagePreview: safePreview(params.welcomeMessage),
+    lastMessagePreview: welcome ? safePreview(welcome) : null,
     createdAt: now,
     updatedAt: now,
   } satisfies ChatDoc);
 
-  await ref.collection("messages").add({
-    role: "assistant",
-    kind: "plain",
-    content: params.welcomeMessage,
-    createdAt: now,
-  } satisfies MessageDoc);
+  if (welcome) {
+    await ref.collection("messages").add({
+      role: "assistant",
+      kind: "plain",
+      content: welcome,
+      createdAt: now,
+    } satisfies MessageDoc);
+  }
 
   return { chatId: ref.id };
 }

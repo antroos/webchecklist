@@ -1,8 +1,12 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
+
+import SidebarNav from "./sidebar/SidebarNav";
+import ChatList from "./sidebar/ChatList";
 
 type ChatMessage = {
   id: string;
@@ -56,33 +60,12 @@ function centsToDollars(cents: number) {
   return Math.round(cents) / 100;
 }
 
-function extractFirstUrlFromText(text: string): string | null {
-  const t = (text || "").trim();
-  if (!t) return null;
-  const urlRegex =
-    /(https?:\/\/[^\s]+)|((?:www\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(\/[^\s]*)?/i;
-  const m = t.match(urlRegex);
-  const raw = m?.[0]?.trim() || "";
-  if (!raw) return null;
-  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-}
+const SNAPSHOT_COMMAND = "<make a snapshot>";
 
-function inferModeFromText(text: string): AnalysisMode {
-  const t = (text || "").toLowerCase();
-  if (
-    t.includes("ui/ux") ||
-    t.includes("uiux") ||
-    t.includes("ux") ||
-    t.includes("usability") ||
-    t.includes("юзабил") ||
-    t.includes("дизайн")
-  ) {
-    return "uiux_audit";
-  }
-  if (t.includes("checklist") || t.includes("qa") || t.includes("чеклист")) {
-    return "qa_checklist";
-  }
-  return "qa_checklist";
+function normalizeUrlCandidate(text: string): string {
+  const t = (text || "").trim();
+  if (!t) return "";
+  return /^https?:\/\//i.test(t) ? t : `https://${t}`;
 }
 
 function parseCsvChecklistToText(csv: string): { title: string; items: string[]; text: string } {
@@ -141,18 +124,12 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
   const [credits, setCredits] = useState<number | null>(null);
   const [billing, setBilling] = useState<BillingStatusMini | null>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      kind: "plain",
-      content:
-        "Paste a page URL (for example snoopgame.com). I will snapshot it (HTML + structure + screenshot), then you can run different analyses (QA checklist, UI/UX audit) without re-opening the browser.",
-    },
-  ]);
-  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [urlInput, setUrlInput] = useState("");
+  const [promptInput, setPromptInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [abortController, setAbortController] =
     useState<AbortController | null>(null);
   const [needsUpgrade, setNeedsUpgrade] = useState(false);
@@ -316,6 +293,31 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
     void refreshHeaderStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    // Client-side safety: if server redirect didn't happen (or got skipped), open the most recent chat.
+    if (chatId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/chats");
+        if (!res.ok) return;
+        const data = (await res.json()) as { chats?: any[] };
+        const chats = Array.isArray(data.chats) ? data.chats : [];
+        const first = chats[0];
+        const id = typeof first?.id === "string" ? first.id : "";
+        if (!id) return;
+        if (!cancelled) {
+          router.replace(`/app?chatId=${encodeURIComponent(id)}`);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId, router]);
 
   useEffect(() => {
     let cancelled = false;
@@ -539,11 +541,75 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
     }
   }
 
+  async function handleMakeSnapshot() {
+    if (isLoading) return;
+    if (!activeChatId) {
+      setError("Create a chat first, then paste a URL and click Make snapshot.");
+      return;
+    }
+    const url = normalizeUrlCandidate(urlInput);
+    if (!url) {
+      setError("Paste a URL first.");
+      return;
+    }
+
+    setError(null);
+    setNeedsUpgrade(false);
+    setOveragePrompt(null);
+    setPendingAnalysis(null);
+    setIsLoading(true);
+
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      kind: "plain",
+      content: url,
+    };
+    setMessages((prev) => [...prev, userMessage]);
+    void persistMessage({
+      chatId: activeChatId,
+      role: "user",
+      kind: "plain",
+      content: userMessage.content,
+    });
+
+    try {
+      const snap = await createSnapshotFromUrl(url);
+      setActiveSnapshot({ snapshotId: snap.snapshotId, url: snap.url, title: snap.title });
+
+      const msg: ChatMessage = {
+        id: `snapshot-${Date.now()}`,
+        role: "assistant",
+        kind: "plain",
+        content: `Snapshot ready for ${snap.url}`,
+        snapshotId: snap.snapshotId,
+      };
+      setMessages((prev) => [...prev, msg]);
+      void persistMessage({
+        chatId: activeChatId,
+        role: "assistant",
+        kind: "plain",
+        content: msg.content,
+        artifacts: { snapshotId: snap.snapshotId },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Snapshot failed";
+      setError(message);
+      setMessages((prev) => [
+        ...prev,
+        { id: `err-${Date.now()}`, role: "assistant", kind: "plain", content: message },
+      ]);
+    } finally {
+      setAbortController(null);
+      setIsLoading(false);
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (isLoading) return;
     if (!activeChatId) {
-      setError("Create a chat first (tap New chat), then paste a URL and press Analyze.");
+      setError("Create a chat first.");
       return;
     }
 
@@ -552,16 +618,29 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
     setOveragePrompt(null);
     setPendingAnalysis(null);
 
+    const text = (promptInput || "").trim();
+    if (!text) return;
+
+    if (text === SNAPSHOT_COMMAND) {
+      setPromptInput("");
+      await handleMakeSnapshot();
+      return;
+    }
+
+    if (!activeSnapshot?.snapshotId) {
+      setError("Make a snapshot first (paste a URL and click Make snapshot).");
+      return;
+    }
+
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
       kind: "plain",
-      content: input.trim(),
+      content: text,
     };
 
-    const nextMessages = [...messages, userMessage];
-    setMessages(nextMessages);
-    setInput("");
+    setMessages((prev) => [...prev, userMessage]);
+    setPromptInput("");
     setIsLoading(true);
 
     void persistMessage({
@@ -572,42 +651,11 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
     });
 
     try {
-      const maybeUrl = extractFirstUrlFromText(userMessage.content);
-
-      if (maybeUrl) {
-        const snap = await createSnapshotFromUrl(maybeUrl);
-        setActiveSnapshot({ snapshotId: snap.snapshotId, url: snap.url, title: snap.title });
-
-        const msg: ChatMessage = {
-          id: `snapshot-${Date.now()}`,
-          role: "assistant",
-          kind: "plain",
-          content: `Snapshot ready for ${snap.url}. Choose an analysis below (QA checklist or UI/UX audit), or just type what you want.`,
-          snapshotId: snap.snapshotId,
-        };
-        setMessages((prev) => [...prev, msg]);
-        void persistMessage({
-          chatId: activeChatId,
-          role: "assistant",
-          kind: "plain",
-          content: msg.content,
-          artifacts: { snapshotId: snap.snapshotId },
-        });
-      } else {
-        if (!activeSnapshot?.snapshotId) {
-          throw new Error("Paste a URL first to create a snapshot.");
-        }
-        const inferred = inferModeFromText(userMessage.content);
-        const mode =
-          inferred === "qa_checklist" && selectedMode === "uiux_audit"
-            ? "uiux_audit"
-            : inferred;
-        await runAnalysis({
-          snapshotId: activeSnapshot.snapshotId,
-          mode,
-          instruction: userMessage.content,
-        });
-      }
+      await runAnalysis({
+        snapshotId: activeSnapshot.snapshotId,
+        mode: selectedMode,
+        instruction: userMessage.content,
+      });
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         const message = "⏹️ Processing stopped by user.";
@@ -859,12 +907,75 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
 
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 shadow-[var(--shadow)]">
+      {drawerOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={() => setDrawerOpen(false)}
+            className="absolute inset-0 bg-black/30"
+          />
+          <div className="absolute left-0 top-0 h-full w-[86%] max-w-[340px] overflow-hidden bg-[color:var(--bg)] shadow-[var(--shadow)]">
+            <div className="flex h-full flex-col p-4">
+              <div className="flex items-center justify-between gap-3">
+                <Link
+                  href="/app"
+                  onClick={() => setDrawerOpen(false)}
+                  className="flex items-center gap-3"
+                >
+                  <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-[color:var(--accent)] to-[color:var(--accent-2)] shadow-[0_16px_34px_rgba(97,106,243,0.18)]" />
+                  <div>
+                    <div className="text-sm font-semibold leading-4">WebMorpher</div>
+                    <div className="text-[11px] text-[color:rgba(11,18,32,0.60)]">
+                      Workspace
+                    </div>
+                  </div>
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  className="h-9 w-9 rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white/85 text-[color:rgba(11,18,32,0.78)]"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
+                <SidebarNav />
+                <ChatList />
+              </div>
+
+              <div className="mt-4 flex items-center justify-between gap-2 rounded-xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)] p-3">
+                <div className="text-xs text-[color:rgba(11,18,32,0.74)]">
+                  {credits === null ? "…" : `${credits} free`}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => signOut({ callbackUrl: "/" })}
+                  className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/85 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.84)] hover:bg-white"
+                >
+                  Sign out
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="mb-3 flex flex-wrap items-start justify-between gap-3 border-b border-[color:rgba(15,23,42,0.08)] pb-2">
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold">WebMorpher</h1>
-          <p className="text-xs text-[color:rgba(11,18,32,0.72)]">
-            Snapshot a page once (HTML + structure + screenshot), then run different analyses (QA checklist, UI/UX audit).
-          </p>
+        <div className="flex min-w-0 items-start gap-2">
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white/85 text-[color:rgba(11,18,32,0.78)] md:hidden"
+            aria-label="Open menu"
+          >
+            ☰
+          </button>
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold">WebMorpher</h1>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="rounded-full border border-[color:rgba(97,106,243,0.28)] bg-[color:rgba(97,106,243,0.12)] px-3 py-1 text-[11px] font-medium text-[color:rgba(11,18,32,0.84)]">
@@ -896,22 +1007,6 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
             </div>
           )}
         </div>
-
-        {!activeChatId && (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-[color:rgba(97,106,243,0.22)] bg-[color:rgba(97,106,243,0.08)] px-3 py-2">
-            <div className="text-xs text-[color:rgba(11,18,32,0.82)]">
-              No chats yet. Create one to start your first project.
-            </div>
-            <button
-              type="button"
-              onClick={createChatFromWorkspace}
-              disabled={creatingChat}
-              className="h-8 rounded-lg bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-3 text-xs font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.22)] hover:brightness-[1.02] disabled:opacity-60"
-            >
-              {creatingChat ? "Creating…" : "New chat"}
-            </button>
-          </div>
-        )}
 
         {error && (
           <div className="rounded-lg border border-[color:rgba(239,68,68,0.25)] bg-[color:rgba(239,68,68,0.08)] px-3 py-1.5 text-xs text-[color:rgba(185,28,28,0.95)]">
@@ -956,39 +1051,59 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="mt-1 flex flex-col gap-2">
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.75)] px-3 py-2">
-            <div className="min-w-0 text-xs text-[color:rgba(11,18,32,0.78)]">
-              {activeSnapshot ? (
-                <span className="truncate">
-                  Active snapshot:{" "}
-                  <span className="font-semibold">{activeSnapshot.url}</span>
-                </span>
-              ) : (
-                <span>
-                  No snapshot yet. Paste a URL to create one.
-                </span>
-              )}
+        <div className="mt-1 flex flex-col gap-2">
+          <div className="flex flex-wrap items-end gap-2 rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.75)] px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-semibold text-[color:rgba(11,18,32,0.78)]">
+                Snapshot URL
+              </div>
+              <input
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                disabled={!activeChatId || isLoading}
+                placeholder="https://example.com"
+                className="mt-1 h-9 w-full min-w-0 rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white/95 px-3 text-sm text-[color:rgba(11,18,32,0.92)] outline-none focus:border-[color:rgba(97,106,243,0.65)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.16)] disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <div className="mt-1 text-[11px] text-[color:rgba(11,18,32,0.55)]">
+                Tip: you can paste domains too (we’ll normalize to https). Or type {SNAPSHOT_COMMAND} in the prompt box.
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => runQuickAnalysis("qa_checklist")}
-                disabled={!activeSnapshot || isLoading}
-                className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/85 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-white disabled:opacity-60"
-              >
-                Run QA
-              </button>
-              <button
-                type="button"
-                onClick={() => runQuickAnalysis("uiux_audit")}
-                disabled={!activeSnapshot || isLoading}
-                className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/85 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-white disabled:opacity-60"
-              >
-                Run UI/UX
-              </button>
-            </div>
+
+            <button
+              type="button"
+              onClick={handleMakeSnapshot}
+              disabled={!activeChatId || isLoading || !urlInput.trim()}
+              className="h-10 shrink-0 rounded-xl bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-4 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.22)] hover:brightness-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Make snapshot
+            </button>
           </div>
+
+          {activeSnapshot && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius)] border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.70)] px-3 py-2">
+              <div className="min-w-0 text-xs text-[color:rgba(11,18,32,0.78)]">
+                Active snapshot: <span className="font-semibold">{activeSnapshot.url}</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => runQuickAnalysis("qa_checklist")}
+                  disabled={isLoading}
+                  className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/85 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-white disabled:opacity-60"
+                >
+                  Generate QA checklist
+                </button>
+                <button
+                  type="button"
+                  onClick={() => runQuickAnalysis("uiux_audit")}
+                  disabled={isLoading}
+                  className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/85 px-3 text-xs font-semibold text-[color:rgba(11,18,32,0.88)] hover:bg-white disabled:opacity-60"
+                >
+                  UI/UX audit
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="text-xs font-semibold text-[color:rgba(11,18,32,0.72)]">
@@ -1024,42 +1139,44 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
             </div>
           </div>
 
-          <div className="rounded-[var(--radius)] border border-[color:rgba(97,106,243,0.25)] bg-[color:rgba(97,106,243,0.06)] p-3">
+          <form
+            onSubmit={handleSubmit}
+            className="rounded-[var(--radius)] border border-[color:rgba(97,106,243,0.25)] bg-[color:rgba(97,106,243,0.06)] p-3"
+          >
             <div className="text-xs font-semibold text-[color:rgba(11,18,32,0.80)]">
-              Paste a URL (to snapshot), or ask for an analysis (uses the active snapshot)
+              Ask the AI (uses the active snapshot)
             </div>
             <div className="mt-2">
               <textarea
                 rows={3}
-                disabled={!activeChatId}
+                disabled={!activeChatId || isLoading}
                 className="w-full resize-none rounded-xl border border-[color:rgba(97,106,243,0.28)] bg-[color:rgba(255,255,255,0.98)] px-3 py-2 text-sm text-[color:rgba(11,18,32,0.92)] outline-none placeholder:text-[color:rgba(11,18,32,0.45)] focus:border-[color:rgba(97,106,243,0.65)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.16)] disabled:cursor-not-allowed disabled:opacity-60"
-                placeholder={"https://snoopgame.com\n\nor: audit UI/UX focusing on trust & conversion"}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
+                placeholder={"Ask for a QA checklist, or: audit UI/UX focusing on trust & conversion.\n\nOr type <make a snapshot> to capture the URL above."}
+                value={promptInput}
+                onChange={(e) => setPromptInput(e.target.value)}
               />
             </div>
-            <div className="mt-2 text-[11px] text-[color:rgba(11,18,32,0.60)]">
-              Tip: you can paste domains too (we’ll normalize to https). If there’s no URL in your message, we’ll analyze the last snapshot.
+            <div className="mt-2 flex items-center justify-end gap-2">
+              {isLoading ? (
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  className="h-10 rounded-xl bg-[color:rgba(239,68,68,0.92)] px-4 text-sm font-medium text-white hover:bg-[color:rgba(239,68,68,0.82)]"
+                >
+                  Stop
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!activeChatId || !promptInput.trim()}
+                  className="h-10 rounded-xl bg-[color:rgba(15,23,42,0.90)] px-4 text-sm font-medium text-white hover:bg-[color:rgba(15,23,42,0.82)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Send
+                </button>
+              )}
             </div>
-          </div>
-          {isLoading ? (
-            <button
-              type="button"
-              onClick={handleStop}
-              className="h-10 self-end rounded-xl bg-[color:rgba(239,68,68,0.92)] px-4 text-sm font-medium text-white hover:bg-[color:rgba(239,68,68,0.82)]"
-            >
-              Stop
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={!activeChatId || !input.trim()}
-              className="h-10 self-end rounded-xl bg-gradient-to-r from-[color:var(--accent)] to-[color:var(--accent-2)] px-5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(97,106,243,0.28)] hover:brightness-[1.02] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
-            >
-              Analyze
-            </button>
-          )}
-        </form>
+          </form>
+        </div>
       </main>
     </div>
   );
