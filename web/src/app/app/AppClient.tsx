@@ -18,8 +18,9 @@ import {
 import { AssistantChatTransport, useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import type { UIMessage } from "ai";
 
-import SidebarNav from "./sidebar/SidebarNav";
 import ChatList from "./sidebar/ChatList";
+import MentorsNav from "./sidebar/MentorsNav";
+import { isMentorId, type MentorId } from "@/lib/mentors";
 
 type PersistedMessage = {
   id: string;
@@ -246,53 +247,51 @@ function Composer() {
   );
 }
 
-function Suggestions() {
+function ChatThread() {
   return (
-    <div className="flex flex-wrap gap-2">
-      <ThreadPrimitive.Suggestion
-        prompt="Проаналізуй UI/UX і дай 5 пріоритетних покращень."
-        send
-        className="rounded-full border border-[color:rgba(15,23,42,0.10)] bg-white/90 px-3 py-2 text-[12px] font-semibold text-[color:rgba(11,18,32,0.82)] hover:bg-white"
-      >
-        UI/UX audit
-      </ThreadPrimitive.Suggestion>
-      <ThreadPrimitive.Suggestion
-        prompt="Зроби чекліст для QA тестування цієї сторінки."
-        send
-        className="rounded-full border border-[color:rgba(15,23,42,0.10)] bg-white/90 px-3 py-2 text-[12px] font-semibold text-[color:rgba(11,18,32,0.82)] hover:bg-white"
-      >
-        QA checklist
-      </ThreadPrimitive.Suggestion>
-      <ThreadPrimitive.Suggestion
-        prompt="Скажи коротко: що тут головне і яка ціль цієї сторінки?"
-        send
-        className="rounded-full border border-[color:rgba(15,23,42,0.10)] bg-white/90 px-3 py-2 text-[12px] font-semibold text-[color:rgba(11,18,32,0.82)] hover:bg-white"
-      >
-        Page goal
-      </ThreadPrimitive.Suggestion>
-    </div>
+    <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto rounded-3xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)] px-5 py-6 md:px-6">
+        <ThreadPrimitive.Messages
+          components={{
+            UserMessage: UserBubble,
+            AssistantMessage: AssistantBubble,
+          }}
+        />
+      </ThreadPrimitive.Viewport>
+
+      <div className="sticky bottom-0 mt-3 bg-[color:var(--card)] pt-2 pb-[calc(env(safe-area-inset-bottom)+8px)]">
+        <Composer />
+      </div>
+    </ThreadPrimitive.Root>
   );
 }
 
-function ChatThread({
+function ChatWorkspace({
   chatId,
   initialMessages,
   model,
+  mentorId,
+  onSelectMentor,
+  drawerOpen,
+  setDrawerOpen,
 }: {
   chatId: string;
   initialMessages: UIMessage[];
   model: string;
+  mentorId: MentorId;
+  onSelectMentor: (id: MentorId) => void;
+  drawerOpen: boolean;
+  setDrawerOpen: (v: boolean) => void;
 }) {
   const transport = useMemo(
     () =>
       new AssistantChatTransport({
         api: "/api/chat",
-        body: { chatId, model },
+        body: { chatId, model, mentorId },
         fetch: async (input, init) => {
           const url = typeof input === "string" ? input : input instanceof Request ? input.url : "";
           const res = await fetch(input as any, init as any);
           if (url.includes("/api/chat") && !res.ok) {
-            // #region agent log
             const cloned = res.clone();
             const text = await cloned.text().catch(() => "");
             fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
@@ -311,16 +310,16 @@ function ChatThread({
                   bodyPrefix: text.slice(0, 1200),
                   chatIdTail: chatId.slice(-6),
                   model,
+                  mentorId,
                 },
                 timestamp: Date.now(),
               }),
             }).catch(() => {});
-            // #endregion agent log
           }
           return res;
         },
       }),
-    [chatId, model],
+    [chatId, model, mentorId],
   );
 
   const runtime = useChatRuntime({
@@ -330,26 +329,67 @@ function ChatThread({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto rounded-3xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)] px-5 py-6 md:px-6">
-          <ThreadPrimitive.Messages
-            components={{
-              UserMessage: UserBubble,
-              AssistantMessage: AssistantBubble,
-            }}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={() => setDrawerOpen(false)}
+            className="absolute inset-0 bg-black/30"
           />
-        </ThreadPrimitive.Viewport>
+          <div className="absolute left-0 top-0 h-full w-[86%] max-w-[340px] overflow-hidden bg-[color:var(--bg)] shadow-[var(--shadow)]">
+            <div className="flex h-full flex-col p-4">
+              <div className="flex items-center justify-between gap-3">
+                <Link href="/app" onClick={() => setDrawerOpen(false)} className="text-sm font-semibold">
+                  WebMorpher
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  className="h-9 w-9 rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white/85 text-[color:rgba(11,18,32,0.78)]"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
 
-        <div className="sticky bottom-0 mt-3 bg-[color:var(--card)] pt-2 pb-[calc(env(safe-area-inset-bottom)+8px)]">
-          <div className="mb-2">
-            <Suggestions />
-          </div>
-          <Composer />
-          <div className="mt-2 text-center text-[11px] text-[color:rgba(11,18,32,0.55)]">
-            Enter to send · Shift+Enter for a new line
+              <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
+                <MentorsNav
+                  activeMentorId={mentorId}
+                  onSelectMentor={onSelectMentor}
+                  onNavigate={() => setDrawerOpen(false)}
+                />
+                <ChatList onNavigate={() => setDrawerOpen(false)} />
+              </div>
+            </div>
           </div>
         </div>
-      </ThreadPrimitive.Root>
+      )}
+
+      <div className="flex min-h-0 flex-1 gap-4">
+        <aside className="hidden min-h-0 w-72 shrink-0 overflow-hidden md:block">
+          <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.85)] p-4 shadow-[var(--shadow-sm)]">
+            <Link href="/app" className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-[color:var(--accent)] to-[color:var(--accent-2)] shadow-[0_16px_34px_rgba(97,106,243,0.18)]" />
+              <div>
+                <div className="text-sm font-semibold leading-4">WebMorpher</div>
+                <div className="text-[11px] text-[color:rgba(11,18,32,0.60)]">
+                  AI mentors for business
+                </div>
+              </div>
+            </Link>
+
+            <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
+              <MentorsNav activeMentorId={mentorId} onSelectMentor={onSelectMentor} />
+              <ChatList />
+            </div>
+          </div>
+        </aside>
+
+        <div className="flex min-h-0 flex-1 flex-col">
+          <ChatThread />
+        </div>
+      </div>
     </AssistantRuntimeProvider>
   );
 }
@@ -360,6 +400,8 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
   const [error, setError] = useState<string | null>(null);
   const [persisted, setPersisted] = useState<PersistedMessage[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [mentorId, setMentorId] = useState<MentorId>("general");
+  const [profileOpen, setProfileOpen] = useState(false);
 
   // MVP: only one model exposed, but keep the selector shape for future expansion.
   const [model, setModel] = useState("gpt-5.2");
@@ -410,17 +452,32 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
       }),
     }).catch(() => {});
       // #endregion agent log
-    fetch(`/api/chats/${encodeURIComponent(activeChatId)}/messages`)
-      .then(async (r) => {
-        if (!r.ok) {
-          const t = await r.text().catch(() => "");
-          throw new Error(`Failed to load messages: HTTP ${r.status} ${t}`);
+    Promise.all([
+      fetch(`/api/chats/${encodeURIComponent(activeChatId)}`),
+      fetch(`/api/chats/${encodeURIComponent(activeChatId)}/messages`),
+    ])
+      .then(async ([metaRes, msgRes]) => {
+        if (!metaRes.ok) {
+          const t = await metaRes.text().catch(() => "");
+          throw new Error(`Failed to load chat meta: HTTP ${metaRes.status} ${t}`);
         }
-        return r.json();
+        if (!msgRes.ok) {
+          const t = await msgRes.text().catch(() => "");
+          throw new Error(`Failed to load messages: HTTP ${msgRes.status} ${t}`);
+        }
+        const meta = await metaRes.json().catch(() => ({} as any));
+        const messagesJson = await msgRes.json().catch(() => ({} as any));
+        return { meta, messagesJson };
       })
-      .then((data) => {
+      .then(async (r) => {
+        const { meta, messagesJson } = r as any;
         if (cancelled) return;
-        const msgs = Array.isArray(data?.messages) ? (data.messages as PersistedMessage[]) : [];
+        const mId = typeof meta?.mentorId === "string" ? meta.mentorId.trim() : "general";
+        setMentorId(isMentorId(mId) ? (mId as MentorId) : "general");
+
+        const msgs = Array.isArray(messagesJson?.messages)
+          ? (messagesJson.messages as PersistedMessage[])
+          : [];
         setPersisted(
           msgs
             .filter((m) => m && (m.role === "user" || m.role === "assistant"))
@@ -463,41 +520,18 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
 
   const initialMessages = useMemo(() => toUiMessages(persisted), [persisted]);
 
-      return (
+  async function selectMentor(next: MentorId) {
+    setMentorId(next);
+    if (!activeChatId) return;
+    await fetch(`/api/chats/${encodeURIComponent(activeChatId)}`, {
+      method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mentorId: next }),
+    }).catch(() => {});
+  }
+
+  return (
     <div className="flex min-h-0 w-full flex-1 flex-col rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 shadow-[var(--shadow)]">
-      {drawerOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
-              <button
-                type="button"
-            aria-label="Close menu"
-            onClick={() => setDrawerOpen(false)}
-            className="absolute inset-0 bg-black/30"
-          />
-          <div className="absolute left-0 top-0 h-full w-[86%] max-w-[340px] overflow-hidden bg-[color:var(--bg)] shadow-[var(--shadow)]">
-            <div className="flex h-full flex-col p-4">
-              <div className="flex items-center justify-between gap-3">
-                <Link href="/app" onClick={() => setDrawerOpen(false)} className="text-sm font-semibold">
-                  WebMorpher
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => setDrawerOpen(false)}
-                  className="h-9 w-9 rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white/85 text-[color:rgba(11,18,32,0.78)]"
-                  aria-label="Close"
-                >
-                  ×
-                </button>
-              </div>
-
-              <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
-                <SidebarNav />
-                <ChatList onNavigate={() => setDrawerOpen(false)} />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       <header className="mb-3 flex items-center justify-between gap-3 border-b border-[color:rgba(15,23,42,0.08)] pb-2">
         <div className="flex min-w-0 items-center gap-2">
           <button
@@ -523,12 +557,41 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
           >
             <option value="gpt-5.2">GPT-5.2</option>
           </select>
-          <button
-            onClick={() => signOut({ callbackUrl: "/" })}
-            className="h-8 rounded-lg border border-[color:rgba(15,23,42,0.12)] bg-white/85 px-3 text-[12px] font-semibold text-[color:rgba(11,18,32,0.84)] hover:bg-white"
-          >
-            Sign out
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setProfileOpen((v) => !v)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:rgba(15,23,42,0.12)] bg-white/85 text-[12px] font-semibold text-[color:rgba(11,18,32,0.84)] hover:bg-white"
+              aria-label="Open profile menu"
+            >
+              ☺
+            </button>
+            {profileOpen && (
+              <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-44 overflow-hidden rounded-2xl border border-[color:rgba(15,23,42,0.12)] bg-white shadow-[0_18px_48px_rgba(2,6,23,0.18)]">
+                <Link
+                  href="/app/account"
+                  className="block px-3 py-2 text-[12px] font-semibold text-[color:rgba(11,18,32,0.86)] hover:bg-[color:rgba(15,23,42,0.04)]"
+                  onClick={() => setProfileOpen(false)}
+                >
+                  Account
+                </Link>
+                <Link
+                  href="/app/billing"
+                  className="block px-3 py-2 text-[12px] font-semibold text-[color:rgba(11,18,32,0.86)] hover:bg-[color:rgba(15,23,42,0.04)]"
+                  onClick={() => setProfileOpen(false)}
+                >
+                  Billing
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => signOut({ callbackUrl: "/" })}
+                  className="block w-full px-3 py-2 text-left text-[12px] font-semibold text-[color:rgba(185,28,28,0.92)] hover:bg-[color:rgba(239,68,68,0.08)]"
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -548,11 +611,15 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
               Loading…
             </div>
           ) : (
-            <ChatThread
-              key={`${activeChatId}:${model}:${initialMessages.length}`}
+            <ChatWorkspace
+              key={`${activeChatId}:${model}:${mentorId}:${initialMessages.length}`}
               chatId={activeChatId}
               initialMessages={initialMessages}
               model={model}
+              mentorId={mentorId}
+              onSelectMentor={selectMentor}
+              drawerOpen={drawerOpen}
+              setDrawerOpen={setDrawerOpen}
             />
           )}
         </div>

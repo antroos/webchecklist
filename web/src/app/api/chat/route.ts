@@ -4,6 +4,7 @@ import { convertToModelMessages, streamText, type UIMessage } from "ai";
 
 import { auth } from "@/auth";
 import { appendMessage } from "@/lib/chatStore";
+import { getMentor, isMentorId } from "@/lib/mentors";
 
 export const runtime = "nodejs";
 
@@ -11,7 +12,8 @@ type ReqBody = {
   chatId?: string;
   model?: string;
   messages?: UIMessage[] | unknown;
-  // optional future
+  mentorId?: string;
+  // legacy / fallback
   mode?: string;
 };
 
@@ -115,6 +117,15 @@ export async function POST(req: Request) {
   }
 
   const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : "gpt-5.2";
+
+  const rawMentor =
+    typeof body.mentorId === "string"
+      ? body.mentorId.trim()
+      : typeof body.mode === "string"
+        ? body.mode.trim()
+        : "general";
+  const mentorId = isMentorId(rawMentor) ? rawMentor : "general";
+  const mentor = getMentor(mentorId);
   // #region agent log
   if (process.env.WMDBG_LOCAL === "1") {
     fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
@@ -153,18 +164,20 @@ export async function POST(req: Request) {
       role: "user",
       kind: "plain",
       content: lastUserText,
+      artifacts: { mode: mentorId },
     });
   } catch {
     // ignore
   }
 
   const basePrompt = getBasePrompt();
+  const system = mentor.systemPrompt ? `${basePrompt}\n\n${mentor.systemPrompt}` : basePrompt;
   const converted = convertToModelMessages(uiMessages as any);
 
   try {
     const result = streamText({
       model: openai(model),
-      system: basePrompt,
+      system,
       messages: converted,
       // Persist assistant message at the end of streaming.
       onFinish: async (evt) => {
@@ -177,6 +190,7 @@ export async function POST(req: Request) {
             role: "assistant",
             kind: "plain",
             content: text,
+            artifacts: { mode: mentorId },
           });
         } catch {
           // ignore

@@ -5,6 +5,7 @@ import { getAdminDb } from "./firebaseAdmin";
 export type ChatDoc = {
   title: string;
   siteUrl?: string | null;
+  mentorId?: string;
   lastMessagePreview?: string | null;
   createdAt: FirebaseFirestore.FieldValue;
   updatedAt: FirebaseFirestore.FieldValue;
@@ -175,16 +176,19 @@ export async function createChat(params: {
   userId: string;
   title?: string;
   siteUrl?: string | null;
+  mentorId?: string;
   welcomeMessage?: string;
 }) {
   const ref = userChatsRef(params.userId).doc();
   const now = FieldValue.serverTimestamp();
   const title = (params.title || "").trim() || "New chat";
   const welcome = (params.welcomeMessage || "").trim();
+  const mentorId = (params.mentorId || "").trim() || "general";
 
   await ref.set({
     title,
     siteUrl: params.siteUrl ?? null,
+    mentorId,
     lastMessagePreview: welcome ? safePreview(welcome) : null,
     createdAt: now,
     updatedAt: now,
@@ -261,6 +265,7 @@ export async function updateChatMeta(params: {
   chatId: string;
   title?: string;
   siteUrl?: string | null;
+  mentorId?: string;
 }) {
   const now = FieldValue.serverTimestamp();
   await userChatsRef(params.userId)
@@ -269,6 +274,7 @@ export async function updateChatMeta(params: {
       {
         ...(typeof params.title === "string" ? { title: params.title } : {}),
         ...(typeof params.siteUrl !== "undefined" ? { siteUrl: params.siteUrl } : {}),
+        ...(typeof params.mentorId === "string" ? { mentorId: params.mentorId } : {}),
         updatedAt: now,
       } satisfies Partial<ChatDoc>,
       { merge: true },
