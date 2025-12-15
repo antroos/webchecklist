@@ -123,10 +123,51 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
   const [model, setModel] = useState("gpt-5.2");
 
   useEffect(() => {
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: "debug-session",
+        runId: "run-chat-1",
+        hypothesisId: "H4",
+        location: "web/src/app/app/AppClient.tsx:mount",
+        message: "appclient.mount",
+        data: {
+          propChatIdTail: activeChatId ? activeChatId.slice(-6) : null,
+          hrefHasChatId: typeof window !== "undefined" ? window.location.href.includes("chatId=") : null,
+          viewport:
+            typeof window !== "undefined"
+              ? { w: window.innerWidth, h: window.innerHeight }
+              : null,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion agent log
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (!activeChatId) return;
     let cancelled = false;
     setError(null);
     setLoading(true);
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: "debug-session",
+        runId: "run-chat-1",
+        hypothesisId: "H4",
+        location: "web/src/app/app/AppClient.tsx:fetchMessages",
+        message: "appclient.fetchMessages.start",
+        data: { chatIdTail: activeChatId.slice(-6) },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion agent log
     fetch(`/api/chats/${encodeURIComponent(activeChatId)}/messages`)
       .then(async (r) => {
         if (!r.ok) {
@@ -148,6 +189,21 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
               content: String((m as any).content ?? ""),
             })),
         );
+        // #region agent log
+        fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: "debug-session",
+            runId: "run-chat-1",
+            hypothesisId: "H4",
+            location: "web/src/app/app/AppClient.tsx:fetchMessages",
+            message: "appclient.fetchMessages.done",
+            data: { chatIdTail: activeChatId.slice(-6), count: msgs.length },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion agent log
       })
       .catch((e) => {
         if (cancelled) return;
