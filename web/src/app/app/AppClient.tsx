@@ -34,8 +34,8 @@ function toUiMessages(messages: PersistedMessage[]): UIMessage[] {
 
 function UserBubble() {
   return (
-    <MessagePrimitive.Root className="flex justify-end">
-      <div className="max-w-[92%] rounded-2xl border border-[color:rgba(97,106,243,0.22)] bg-[color:rgba(97,106,243,0.12)] px-3 py-2 text-sm text-[color:rgba(11,18,32,0.92)] shadow-sm md:max-w-3xl">
+    <MessagePrimitive.Root className="mb-3 flex justify-end last:mb-0">
+      <div className="max-w-[92%] rounded-2xl border border-[color:rgba(97,106,243,0.18)] bg-[color:rgba(97,106,243,0.10)] px-4 py-2.5 text-[15px] leading-relaxed text-[color:rgba(11,18,32,0.92)] md:max-w-3xl">
         <MessagePrimitive.Parts
           components={{
             Reasoning: () => null,
@@ -48,8 +48,8 @@ function UserBubble() {
 
 function AssistantBubble() {
   return (
-    <MessagePrimitive.Root className="flex justify-start">
-      <div className="max-w-[92%] rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.88)] px-3 py-2 text-sm text-[color:rgba(11,18,32,0.90)] shadow-sm md:max-w-3xl">
+    <MessagePrimitive.Root className="mb-3 flex justify-start last:mb-0">
+      <div className="max-w-[92%] rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-white px-4 py-2.5 text-[15px] leading-relaxed text-[color:rgba(11,18,32,0.90)] md:max-w-3xl">
         <MessagePrimitive.Parts
           components={{
             Reasoning: () => null,
@@ -62,14 +62,13 @@ function AssistantBubble() {
 
 function Composer() {
   return (
-    <ComposerPrimitive.Root className="rounded-3xl border border-[color:rgba(15,23,42,0.12)] bg-white/95 p-3 shadow-[0_14px_40px_rgba(15,23,42,0.10)]">
-      <ComposerPrimitive.Input className="min-h-[54px] w-full resize-none rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-white px-4 py-3 text-[15px] leading-relaxed text-[color:rgba(11,18,32,0.92)] outline-none placeholder:text-[color:rgba(11,18,32,0.45)] focus:border-[color:rgba(97,106,243,0.60)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.14)]" />
-      <div className="mt-3 flex items-center justify-end gap-2">
-        <ComposerPrimitive.Cancel className="hidden" />
-        <ComposerPrimitive.Send className="h-10 rounded-xl bg-[color:rgba(15,23,42,0.90)] px-4 text-sm font-medium text-white hover:bg-[color:rgba(15,23,42,0.82)]">
-          Send
-        </ComposerPrimitive.Send>
-      </div>
+    <ComposerPrimitive.Root className="rounded-3xl border border-[color:rgba(15,23,42,0.12)] bg-white/95 px-3 py-2 shadow-[0_14px_40px_rgba(15,23,42,0.10)]">
+      <ComposerPrimitive.Input
+        submitOnEnter
+        className="min-h-[52px] w-full resize-none rounded-2xl bg-transparent px-3 py-3 text-[15px] leading-relaxed text-[color:rgba(11,18,32,0.92)] outline-none placeholder:text-[color:rgba(11,18,32,0.45)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.14)]"
+        placeholder="Message…"
+      />
+      <ComposerPrimitive.Cancel className="hidden" />
     </ComposerPrimitive.Root>
   );
 }
@@ -159,7 +158,7 @@ function ChatThread({
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto rounded-3xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)] p-4">
+        <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto rounded-3xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(15,23,42,0.02)] px-5 py-6 md:px-6">
           <ThreadPrimitive.Messages
             components={{
               UserMessage: UserBubble,
@@ -173,6 +172,9 @@ function ChatThread({
             <Suggestions />
           </div>
           <Composer />
+          <div className="mt-2 text-center text-[11px] text-[color:rgba(11,18,32,0.55)]">
+            Enter to send · Shift+Enter for a new line
+          </div>
         </div>
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
