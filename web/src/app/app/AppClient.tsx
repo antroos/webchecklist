@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 
@@ -10,6 +10,8 @@ import {
   MessagePrimitive,
   ThreadPrimitive,
   type ThreadMessage,
+  useAssistantApi,
+  useAssistantState,
 } from "@assistant-ui/react";
 import { AssistantChatTransport, useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import type { UIMessage } from "ai";
@@ -61,15 +63,152 @@ function AssistantBubble() {
 }
 
 function Composer() {
+  const api = useAssistantApi();
+  const attachmentsCount = useAssistantState((s) => s.composer.attachments.length);
+  const isRunning = useAssistantState((s) => s.thread.isRunning);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  async function addFiles(files: FileList | null) {
+    const arr = Array.from(files ?? []);
+    if (!arr.length) return;
+    for (const f of arr) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await api.composer().addAttachment(f);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   return (
-    <ComposerPrimitive.Root className="rounded-3xl border border-[color:rgba(15,23,42,0.12)] bg-white/95 px-3 py-2 shadow-[0_14px_40px_rgba(15,23,42,0.10)]">
-      <ComposerPrimitive.Input
-        submitOnEnter
-        className="min-h-[52px] w-full resize-none rounded-2xl bg-transparent px-3 py-3 text-[15px] leading-relaxed text-[color:rgba(11,18,32,0.92)] outline-none placeholder:text-[color:rgba(11,18,32,0.45)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.14)]"
-        placeholder="Message…"
+    <>
+      {pickerOpen && (
+        <div className="fixed inset-0 z-50">
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => setPickerOpen(false)}
+            className="absolute inset-0 bg-black/30"
+          />
+          <div className="absolute bottom-0 left-0 right-0 rounded-t-3xl bg-[color:var(--card)] shadow-[0_-18px_48px_rgba(15,23,42,0.18)]">
+            <div className="mx-auto w-full max-w-md p-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="text-sm font-semibold text-[color:rgba(11,18,32,0.90)]">
+                  Add to chat
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(false)}
+                  className="h-9 w-9 rounded-xl border border-[color:rgba(15,23,42,0.12)] bg-white/85 text-[color:rgba(11,18,32,0.72)]"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPickerOpen(false);
+                    imageInputRef.current?.click();
+                  }}
+                  className="rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-white/90 p-4 text-left hover:bg-white"
+                >
+                  <div className="text-sm font-semibold text-[color:rgba(11,18,32,0.90)]">
+                    Add photo
+                  </div>
+                  <div className="mt-1 text-[12px] text-[color:rgba(11,18,32,0.62)]">
+                    PNG, JPG, WEBP
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPickerOpen(false);
+                    fileInputRef.current?.click();
+                  }}
+                  className="rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-white/90 p-4 text-left hover:bg-white"
+                >
+                  <div className="text-sm font-semibold text-[color:rgba(11,18,32,0.90)]">
+                    Add file
+                  </div>
+                  <div className="mt-1 text-[12px] text-[color:rgba(11,18,32,0.62)]">
+                    PDF, DOC, etc.
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => void addFiles(e.target.files)}
       />
-      <ComposerPrimitive.Cancel className="hidden" />
-    </ComposerPrimitive.Root>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => void addFiles(e.target.files)}
+      />
+
+      <ComposerPrimitive.Root className="rounded-3xl border border-[color:rgba(15,23,42,0.12)] bg-white/95 px-2 py-2 shadow-[0_14px_40px_rgba(15,23,42,0.10)]">
+        {attachmentsCount > 0 && (
+          <div className="px-2 pt-2">
+            <div className="flex flex-wrap gap-2">
+              <ComposerPrimitive.Attachments
+                components={{
+                  Attachment: () => {
+                    const name = useAssistantState((s) => s.attachment?.name ?? "Attachment");
+                    return (
+                      <div className="inline-flex items-center gap-2 rounded-full border border-[color:rgba(15,23,42,0.10)] bg-white/90 px-3 py-1.5 text-[12px] text-[color:rgba(11,18,32,0.82)]">
+                        <span className="max-w-[190px] truncate">{name}</span>
+                      </div>
+                    );
+                  },
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-end gap-2 px-2 py-2">
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[color:rgba(15,23,42,0.12)] bg-white/90 text-[18px] font-semibold text-[color:rgba(11,18,32,0.78)] hover:bg-white disabled:opacity-60"
+            disabled={isRunning}
+            aria-label="Add attachment"
+          >
+            +
+          </button>
+
+          <ComposerPrimitive.Input
+            submitOnEnter
+            className="min-h-[44px] flex-1 resize-none rounded-2xl bg-transparent px-2 py-2 text-[16px] leading-relaxed text-[color:rgba(11,18,32,0.92)] outline-none placeholder:text-[color:rgba(11,18,32,0.45)] focus:shadow-[0_0_0_4px_rgba(97,106,243,0.14)]"
+            placeholder="Message…"
+          />
+
+          <ComposerPrimitive.Send
+            aria-label="Send"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[color:rgba(15,23,42,0.92)] text-[18px] font-semibold text-white shadow-[0_10px_22px_rgba(15,23,42,0.18)] hover:bg-[color:rgba(15,23,42,0.84)]"
+          >
+            ↑
+          </ComposerPrimitive.Send>
+        </div>
+
+        <ComposerPrimitive.Cancel className="hidden" />
+      </ComposerPrimitive.Root>
+    </>
   );
 }
 
