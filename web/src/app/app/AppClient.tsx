@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import {
   AssistantRuntimeProvider,
@@ -25,6 +27,37 @@ type PersistedMessage = {
   kind?: "status" | "result" | "plain";
   content: string;
 };
+
+function MarkdownText({ text }: { text: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        p: ({ children }) => (
+          <p className="whitespace-pre-wrap break-words leading-relaxed">
+            {children}
+          </p>
+        ),
+        li: ({ children }) => (
+          <li className="ml-5 list-disc whitespace-pre-wrap break-words">
+            {children}
+          </li>
+        ),
+        strong: ({ children }) => (
+          <strong className="font-semibold">{children}</strong>
+        ),
+        em: ({ children }) => <em className="italic">{children}</em>,
+        code: ({ children }) => (
+          <code className="rounded bg-black/[0.06] px-1 py-0.5 font-mono text-[0.95em]">
+            {children}
+          </code>
+        ),
+      }}
+    >
+      {text}
+    </ReactMarkdown>
+  );
+}
 
 function toUiMessages(messages: PersistedMessage[]): UIMessage[] {
   return messages.map((m) => ({
@@ -54,6 +87,7 @@ function AssistantBubble() {
       <div className="max-w-[92%] rounded-2xl border border-[color:rgba(15,23,42,0.10)] bg-white px-4 py-2.5 text-[15px] leading-relaxed text-[color:rgba(11,18,32,0.90)] md:max-w-3xl">
         <MessagePrimitive.Parts
           components={{
+            Text: (props) => <MarkdownText text={(props as any).text ?? ""} />,
             Reasoning: () => null,
           }}
         />
