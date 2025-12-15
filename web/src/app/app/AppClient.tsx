@@ -283,6 +283,36 @@ function ChatWorkspace({
   drawerOpen: boolean;
   setDrawerOpen: (v: boolean) => void;
 }) {
+  // #region agent log
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mdUp = window.matchMedia?.("(min-width: 768px)")?.matches ?? null;
+    const sidebar = document.querySelector("[data-wm-mentor-sidebar='1']") as HTMLElement | null;
+    const rect = sidebar?.getBoundingClientRect?.();
+    fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: "debug-session",
+        runId: "run-sidebar-1",
+        hypothesisId: "H1",
+        location: "web/src/app/app/AppClient.tsx:ChatWorkspace:mount",
+        message: "sidebar.debug.mount",
+        data: {
+          chatIdTail: chatId.slice(-6),
+          mdUp,
+          win: { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio },
+          sidebarExists: Boolean(sidebar),
+          sidebarRect: rect
+            ? { x: Math.round(rect.x), w: Math.round(rect.width), h: Math.round(rect.height) }
+            : null,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }, [chatId]);
+  // #endregion agent log
+
   const transport = useMemo(
     () =>
       new AssistantChatTransport({
@@ -367,7 +397,10 @@ function ChatWorkspace({
       )}
 
       <div className="flex min-h-0 flex-1 gap-4">
-        <aside className="hidden min-h-0 w-72 shrink-0 overflow-hidden md:block">
+        <aside
+          data-wm-mentor-sidebar="1"
+          className="hidden min-h-0 w-72 shrink-0 overflow-hidden md:block"
+        >
           <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-[color:rgba(15,23,42,0.10)] bg-[color:rgba(255,255,255,0.85)] p-4 shadow-[var(--shadow-sm)]">
             <Link href="/app" className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-[color:var(--accent)] to-[color:var(--accent-2)] shadow-[0_16px_34px_rgba(97,106,243,0.18)]" />
@@ -402,6 +435,7 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mentorId, setMentorId] = useState<MentorId>("general");
   const [profileOpen, setProfileOpen] = useState(false);
+  const hostRef = useRef<HTMLDivElement | null>(null);
 
   // MVP: only one model exposed, but keep the selector shape for future expansion.
   const [model, setModel] = useState("gpt-5.2");
@@ -520,6 +554,12 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
 
   const initialMessages = useMemo(() => toUiMessages(persisted), [persisted]);
 
+  // #region agent log
+  useEffect(() => {
+    __wmdbg_sidebarHostMetrics(hostRef.current, activeChatId);
+  }, [activeChatId]);
+  // #endregion agent log
+
   async function selectMentor(next: MentorId) {
     setMentorId(next);
     if (!activeChatId) return;
@@ -531,7 +571,10 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
   }
 
   return (
-    <div className="flex min-h-0 w-full flex-1 flex-col rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 shadow-[var(--shadow)]">
+    <div
+      ref={hostRef}
+      className="flex min-h-0 w-full flex-1 flex-col rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 shadow-[var(--shadow)]"
+    >
       <header className="mb-3 flex items-center justify-between gap-3 border-b border-[color:rgba(15,23,42,0.08)] pb-2">
         <div className="flex min-w-0 items-center gap-2">
           <button
@@ -627,5 +670,33 @@ export default function AppClient({ chatId }: { chatId: string | null }) {
     </div>
   );
 }
+
+// #region agent log
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function __wmdbg_sidebarHostMetrics(hostEl: HTMLDivElement | null, activeChatId: string) {
+  if (!hostEl || typeof window === "undefined") return;
+  const r = hostEl.getBoundingClientRect();
+  const mdUp = window.matchMedia?.("(min-width: 768px)")?.matches ?? null;
+  fetch("http://127.0.0.1:7242/ingest/e38c11ec-9fba-420e-88d7-64588137f26f", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: "debug-session",
+      runId: "run-sidebar-1",
+      hypothesisId: "H2",
+      location: "web/src/app/app/AppClient.tsx:AppClient:hostMetrics",
+      message: "sidebar.debug.hostMetrics",
+      data: {
+        chatIdTail: activeChatId ? activeChatId.slice(-6) : null,
+        mdUp,
+        hostRect: { w: Math.round(r.width), h: Math.round(r.height) },
+        hostScroll: { w: hostEl.scrollWidth, h: hostEl.scrollHeight },
+        win: { w: window.innerWidth, h: window.innerHeight },
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+}
+// #endregion agent log
 
 
