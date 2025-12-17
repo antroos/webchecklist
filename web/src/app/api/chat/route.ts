@@ -5,6 +5,8 @@ import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { auth } from "@/auth";
 import { appendMessage } from "@/lib/chatStore";
 import { getMentor, isMentorId } from "@/lib/mentors";
+import { basePromptV1, detectUserLang, getMentorOverlayV1 } from "@/lib/promptLibrary";
+import { updateChatMeta } from "@/lib/chatStore";
 
 export const runtime = "nodejs";
 
@@ -39,6 +41,16 @@ function getBasePrompt(): string {
     "You are a helpful assistant inside a product.",
     "Be concise, practical, and structured.",
   ].join("\n");
+}
+
+function shouldRouteToQa(text: string): boolean {
+  const s = (text || "").toLowerCase();
+  if (!s) return false;
+  // URL or explicit QA/testing intent
+  if (/\bhttps?:\/\//.test(s)) return true;
+  return /\bqa\b|checklist|test|testing|bug|regression|dropdown|menu|edge case|acceptance criteria/i.test(
+    text,
+  );
 }
 
 export async function POST(req: Request) {
@@ -156,6 +168,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing user message" }, { status: 400 });
   }
 
+  const lang = detectUserLang(lastUserText);
+
   // Persist user message (best-effort). We may get duplicates on retries; acceptable for MVP.
   try {
     await appendMessage({
@@ -170,8 +184,31 @@ export async function POST(req: Request) {
     // ignore
   }
 
-  const basePrompt = getBasePrompt();
-  const system = mentor.systemPrompt ? `${basePrompt}\n\n${mentor.systemPrompt}` : basePrompt;
+  // Auto-switch: General → QA Lead (MVP) when the user clearly wants QA/testing.
+  let effectiveMentorId = mentorId;
+  if (mentorId === "general" && shouldRouteToQa(lastUserText)) {
+    effectiveMentorId = "qa_lead";
+    try {
+      await updateChatMeta({ userId, chatId, mentorId: effectiveMentorId });
+    } catch {
+      // ignore
+    }
+  }
+
+  const effectiveMentor = getMentor(effectiveMentorId);
+
+  const basePrompt = process.env.APP_BASE_PROMPT?.trim()
+    ? process.env.APP_BASE_PROMPT!.trim()
+    : basePromptV1(lang);
+
+  const overlay =
+    effectiveMentor.systemPrompt === "PROMPT_LIBRARY:general_mentor_v1"
+      ? getMentorOverlayV1("general", lang)
+      : effectiveMentor.systemPrompt === "PROMPT_LIBRARY:qa_lead_v1"
+        ? getMentorOverlayV1("qa_lead", lang)
+        : effectiveMentor.systemPrompt;
+
+  const system = overlay ? `${basePrompt}\n\n${overlay}` : basePrompt;
   const converted = convertToModelMessages(uiMessages as any);
 
   try {
@@ -190,7 +227,7 @@ export async function POST(req: Request) {
             role: "assistant",
             kind: "plain",
             content: text,
-            artifacts: { mode: mentorId },
+            artifacts: { mode: effectiveMentorId },
           });
         } catch {
           // ignore

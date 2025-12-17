@@ -25,7 +25,7 @@ export const MENTORS: MentorDef[] = [
     id: "general",
     label: "General",
     description: "A helpful AI mentor for business thinking and execution.",
-    systemPrompt: "",
+    systemPrompt: "PROMPT_LIBRARY:general_mentor_v1",
     quickActions: [
       {
         id: "weekly-plan",
@@ -45,13 +45,7 @@ export const MENTORS: MentorDef[] = [
     id: "qa_lead",
     label: "QA Lead",
     description: "Release readiness, test plans, edge cases, acceptance criteria.",
-    systemPrompt: [
-      "You are a senior QA Lead and test strategist.",
-      "You produce practical, structured outputs: checklists, test plans, acceptance criteria, risk areas, and edge cases.",
-      "Focus on user flows, cross-browser/mobile, accessibility basics, and regression risk.",
-      "When context is missing (URL, feature description, platform), ask concise clarifying questions first.",
-      "Prefer concise tables/lists. No fluff.",
-    ].join("\n"),
+    systemPrompt: "PROMPT_LIBRARY:qa_lead_v1",
     quickActions: [
       {
         id: "qa-checklist",
