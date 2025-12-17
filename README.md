@@ -2,6 +2,45 @@
 
 AI-powered system for generating website testing checklists (web-only).
 
+## Prompt system (mentors) + QA iteration
+
+The product now supports **mentor roles** (e.g. General, QA Lead, UI/UX Expert) and a **prompt layering** approach:
+
+- **Base prompt**: product-wide behavior (concise mentor tone, language mirroring, “don’t invent”, structured output).
+- **Mentor overlay**: role-specific instructions (QA Lead, UI/UX Expert, etc.).
+- (Optional later) **Per-chat project context**: business-specific context for one project/chat.
+
+### Prompt versions (v1)
+
+- **Prompt library**: `web/src/lib/promptLibrary.ts`
+  - `basePromptV1(...)`
+  - `generalMentorV1(...)` (triage/therapist)
+  - `qaLeadV1(...)` (page understanding + Markdown table checklist)
+  - Language is detected from the user’s last message (UA/RU/EN) and responses mirror it.
+
+- **Mentor definitions**: `web/src/lib/mentors.ts`
+  - Mentors store a `systemPrompt` marker like `PROMPT_LIBRARY:qa_lead_v1` so we can swap versions cleanly.
+
+- **Runtime application**: `web/src/app/api/chat/route.ts`
+  - Builds final `system` as: **Base prompt + Mentor overlay**.
+  - **Auto-switch (MVP)**: if the active mentor is `general` and the user message clearly indicates QA intent (URL, “QA”, “checklist”, “testing”, etc.), the chat is automatically switched to `qa_lead` for that chat.
+
+### QA Lead behavior (v1)
+
+QA Lead outputs:
+1) **Page understanding** (site type, page type, goal, key flows, detected features)
+2) **Markdown checklist table** with fixed columns:
+   `| ID | Priority | Area | Check | Steps | Expected | Notes |`
+
+It supports one-page and multi-page flows: if only a homepage is provided, it asks for 1–3 additional high-value pages (pricing/contact/checkout, depending on site type).
+
+### Offline quality evaluation (Google Sheet)
+
+We iterate quality using your dataset (AI output + human QA feedback) via a simple offline workflow:
+- Template doc: `web/PROMPT_EVAL_QA.md`
+- Recommended tabs: `Cases` (URL → AI output → QA missing bullets) and `Rules` (trigger-based checks).
+- Scoring: coverage of QA-missing bullets + count of missed P0/P1.
+
 ## Architecture
 
 The project consists of two parts:
